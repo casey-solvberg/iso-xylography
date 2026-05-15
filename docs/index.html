@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iso-Xylography Studio</title>
+  <script type="module" crossorigin src="./assets/index-DUk1NwpJ.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-Dec4nCMf.css">
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Iso-Xylography</h2>
+
+        <div class="mode-switcher">
+            <button id="btnMonoMode" class="mode-btn active">Monochrome</button>
+            <button id="btnColorMode" class="mode-btn">Polychrome</button>
+        </div>
+
+        <div class="dropdown" style="width: 100%; margin-bottom: 15px;">
+            <button class="action-btn" id="uploadMenuBtn" style="width: 100%; background-color: #333; border: 2px dashed #555;" title="Select Image">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                Choose Image
+            </button>
+            <div id="uploadDropdown" class="dropdown-content" style="width: 100%; text-align: center;">
+                <a href="#" data-val="/Mona_Lisa.png">Mona Lisa</a>
+                <a href="#" data-val="/Marilyn_Monroe.jpg">Marilyn Monroe</a>
+                <a href="#" data-val="custom">📁 Upload custom...</a>
+            </div>
+            <input type="file" id="imageInput" accept="image/*" style="display: none;">
+        </div>
+
+        <div class="control-group">
+            <label>Columns (X): <span class="val-wrapper"><input type="number" class="value-badge" id="val-cols" value="6" min="1" max="33"></span></label>
+            <input type="range" id="colsInput" min="1" max="33" value="3">
+            <label>Rows (Y): <span class="val-wrapper"><input type="number" class="value-badge" id="val-rows" value="6" min="1" max="33"></span></label>
+            <input type="range" id="rowsInput" min="1" max="33" value="6">
+        </div>
+
+        <div class="control-group">
+            <div class="layer-header">
+                <h3 class="layer-title" id="mainLayerTitle">Black Layer</h3>
+                <input type="checkbox" id="enableBlack" checked>
+            </div>
+
+            <div id="blackControls" class="active">
+                <div class="radio-panel">
+                    <div class="radio-col">
+                        <h3>Mode</h3>
+                        <label class="radio-label"><input type="radio" name="black_mode" value="i_odd" checked><span class="checkmark"></span> A</label>
+                        <label class="radio-label"><input type="radio" name="black_mode" value="i_even"><span class="checkmark"></span> B</label>
+                        <label class="radio-label"><input type="radio" name="black_mode" value="odd"><span class="checkmark"></span> C</label>
+                        <label class="radio-label"><input type="radio" name="black_mode" value="even"><span class="checkmark"></span> D</label>
+                    </div>
+                    <div class="radio-col">
+                        <h3>Combo <span class="c-red">R</span>-<span class="c-green">G</span>-<span class="c-blue">B</span></h3>
+                        <label class="radio-label"><input type="radio" name="black_combo" value="123" checked><span class="checkmark"></span> 1 - 2 - 3</label>
+                        <label class="radio-label"><input type="radio" name="black_combo" value="132"><span class="checkmark"></span> 1 - 3 - 2</label>
+                        <label class="radio-label"><input type="radio" name="black_combo" value="213"><span class="checkmark"></span> 2 - 1 - 3</label>
+                        <label class="radio-label"><input type="radio" name="black_combo" value="231"><span class="checkmark"></span> 2 - 3 - 1</label>
+                        <label class="radio-label"><input type="radio" name="black_combo" value="312"><span class="checkmark"></span> 3 - 1 - 2</label>
+                        <label class="radio-label"><input type="radio" name="black_combo" value="321"><span class="checkmark"></span> 3 - 2 - 1</label>
+                        <label class="radio-label" style="margin-top: 5px;">
+                            <input type="radio" name="black_combo" value="custom">
+                            <span class="checkmark"></span> Custom:
+                            <select id="black_combo_select" class="custom-combo-select"></select>
+                        </label>
+                    </div>
+                </div>
+
+                <label>Detail Level: <span class="val-wrapper"><input type="number" class="value-badge" id="val-blackDetail" value="33" min="10" max="150"></span></label>
+                <input type="range" id="blackDetailInput" min="10" max="150" value="33">
+                
+                <div id="monoSpecificBlackControls" class="active">
+                    <label>Bezier Smoothing: <span class="val-wrapper"><input type="number" class="value-badge" id="val-blackSmooth" value="0.50" min="0" max="1" step="0.01"></span></label>
+                    <input type="range" id="blackSmoothInput" min="0" max="100" value="50">
+                    
+                    <label>Min Thickness: <span class="val-wrapper"><input type="number" class="value-badge" id="val-blackMinThick" value="0" min="0" max="100">%</span></label>
+                    <input type="range" id="blackMinThickInput" min="0" max="100" value="0">
+                    
+                    <label>Max Thickness: <span class="val-wrapper"><input type="number" class="value-badge" id="val-blackMaxThick" value="100" min="0" max="200">%</span></label>
+                    <input type="range" id="blackMaxThickInput" min="0" max="200" value="100">
+                </div>
+
+                <div id="colorSpecificControls" class="disabled-block">
+                    <label style="margin-top: 15px;">Hue Shift: <span class="val-wrapper"><input type="number" class="value-badge" id="val-hueShift" value="0"></span></label>
+                    <input type="range" id="hueShiftInput" min="-180" max="180" value="0">
+                    
+                    <div class="palette-grid">
+                        <div id="swatch-W"></div>
+                        <div id="swatch-C"></div><div id="swatch-M"></div><div id="swatch-Y"></div>
+                        <div id="swatch-R"></div><div id="swatch-G"></div><div id="swatch-B"></div>
+                        <div id="swatch-K"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="grayLayerContainer" class="control-group active">
+            <div class="layer-header">
+                <h3 class="layer-title" style="color: #aaa;">Gray Layer</h3>
+                <input type="checkbox" id="enableGray" checked>
+            </div>
+
+            <div id="grayControls" class="active">
+                <div class="bg-dark-panel">
+                    <label style="margin-bottom: 8px;">Style: 
+                        <select id="grayRenderMode" class="render-mode-select" style="margin: 0;">
+                            <option value="checkered">Checkered</option>
+                            <option value="continuous" selected>Continuous</option>
+                        </select>
+                    </label>
+                    <label class="checkbox-label"><input type="checkbox" id="grayOnWhite" checked> Show on White Background</label>
+                    <label class="checkbox-label"><input type="checkbox" id="grayOnBlack" checked> Show on Black Background</label>
+                </div>
+
+                <div class="radio-panel">
+                    <div class="radio-col">
+                        <h3>Mode</h3>
+                        <label class="radio-label"><input type="radio" name="gray_mode" value="i_odd" checked><span class="checkmark"></span> A</label>
+                        <label class="radio-label"><input type="radio" name="gray_mode" value="i_even"><span class="checkmark"></span> B</label>
+                        <label class="radio-label"><input type="radio" name="gray_mode" value="odd"><span class="checkmark"></span> C</label>
+                        <label class="radio-label"><input type="radio" name="gray_mode" value="even"><span class="checkmark"></span> D</label>
+                    </div>
+                    <div class="radio-col">
+                        <h3>Combo <span class="c-red">R</span>-<span class="c-green">G</span>-<span class="c-blue">B</span></h3>
+                        <label class="radio-label"><input type="radio" name="gray_combo" value="123"><span class="checkmark"></span> 1 - 2 - 3</label>
+                        <label class="radio-label"><input type="radio" name="gray_combo" value="132"><span class="checkmark"></span> 1 - 3 - 2</label>
+                        <label class="radio-label"><input type="radio" name="gray_combo" value="213"><span class="checkmark"></span> 2 - 1 - 3</label>
+                        <label class="radio-label"><input type="radio" name="gray_combo" value="231" checked><span class="checkmark"></span> 2 - 3 - 1</label>
+                        <label class="radio-label"><input type="radio" name="gray_combo" value="312"><span class="checkmark"></span> 3 - 1 - 2</label>
+                        <label class="radio-label"><input type="radio" name="gray_combo" value="321"><span class="checkmark"></span> 3 - 2 - 1</label>
+                        <label class="radio-label" style="margin-top: 5px;">
+                            <input type="radio" name="gray_combo" value="custom">
+                            <span class="checkmark"></span> Custom:
+                            <select id="gray_combo_select" class="custom-combo-select"></select>
+                        </label>
+                    </div>
+                </div>
+
+                <label>Detail Level: <span class="val-wrapper"><input type="number" class="value-badge" id="val-grayDetail" value="33" min="10" max="150"></span></label>
+                <input type="range" id="grayDetailInput" min="10" max="150" value="33">
+                
+                <label>Bezier Smoothing: <span class="val-wrapper"><input type="number" class="value-badge" id="val-graySmooth" value="0.50" min="0" max="1" step="0.01"></span></label>
+                <input type="range" id="graySmoothInput" min="0" max="100" value="50">
+                
+                <label>Min Thickness: <span class="val-wrapper"><input type="number" class="value-badge" id="val-grayMinThick" value="0" min="0" max="100">%</span></label>
+                <input type="range" id="grayMinThickInput" min="0" max="100" value="0">
+                
+                <label>Max Thickness: <span class="val-wrapper"><input type="number" class="value-badge" id="val-grayMaxThick" value="100" min="0" max="200">%</span></label>
+                <input type="range" id="grayMaxThickInput" min="0" max="200" value="100">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3 class="layer-title" style="color: #aaa; margin-bottom: 12px; font-size: 0.9rem;">Overlays</h3>
+            
+            <label class="checkbox-label"><input type="checkbox" id="cropToHex"> Crop to Hexagons</label>
+            
+            <label class="checkbox-label"><input type="checkbox" id="showRectGrid"> Construction Grid</label>
+            <label class="checkbox-label"><input type="checkbox" id="showHexGrid"> Rhombus Mesh</label>
+            
+            <label class="checkbox-label"><input type="checkbox" id="showInitialHex"> Initial Hexagons</label>
+            
+            <label class="checkbox-label"><input type="checkbox" id="showSelectors"> Selector Faces</label>
+            
+            <label style="margin-top:12px;">Debug Opacity: <span class="val-wrapper"><input type="number" class="value-badge" id="val-debugOpacity" value="50" min="0" max="100">%</span></label>
+            <input type="range" id="debugOpacityInput" min="0" max="100" value="50">
+        </div>
+        
+        <button id="downloadPngBtn" class="action-btn" style="margin-bottom: 10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Download PNG
+        </button>
+        <button id="downloadSvgBtn" class="action-btn" style="background-color: #2196F3;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Download SVG
+        </button>
+    </div>
+
+    <div class="viewport">
+        <canvas id="mainCanvas"></canvas>
+    </div>
+
+</body>
+</html>
