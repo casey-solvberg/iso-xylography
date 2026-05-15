@@ -1,4 +1,4 @@
-export const COLOR_SEQUENCE = ['K', 'B', 'M', 'R', 'Y', 'G', 'C', 'W'];
+export const COLOR_SEQUENCE = ['K', 'B', 'R', 'M', 'G', 'C', 'Y', 'W'];
 
 export function rgbToHsl(r, g, b) {
     r /= 255; g /= 255; b /= 255;
