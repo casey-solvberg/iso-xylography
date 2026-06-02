@@ -133,7 +133,7 @@ function syncControls(sourceEl) {
 const triggerRender = () => { clearTimeout(renderTimeout); renderTimeout = setTimeout(render, 50); };
 document.querySelectorAll('.sidebar input[type="range"]').forEach(c => { c.addEventListener('input', (e) => { syncControls(e.target); triggerRender(); }); });
 document.querySelectorAll('.sidebar input[type="number"]').forEach(c => { c.addEventListener('change', (e) => { syncControls(e.target); triggerRender(); }); });
-document.querySelectorAll('.sidebar input[type="checkbox"], .sidebar input[type="radio"]').forEach(c => { c.addEventListener('change', triggerRender); });
+document.querySelectorAll('.sidebar input[type="checkbox"], .sidebar input[type="radio"], .sidebar select').forEach(c => { c.addEventListener('change', triggerRender); });
 document.querySelectorAll('.custom-combo-select').forEach(sel => { sel.addEventListener('change', (e) => { document.querySelector(`input[name="${sel.id.split('_')[0]}_combo"][value="custom"]`).checked = true; triggerRender(); }); });
 
 function updatePaletteUI(hueShift) {
@@ -332,7 +332,7 @@ function render() {
 
     // --- EXECUTE & COMPOSITE ---
     
-    // 1. Генерируем массив координат базовых шестиугольников (Initial Hexagons)
+    // 1. Create an array of coordinates for all base hexagons
     const hexPolys = [];
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
@@ -349,34 +349,28 @@ function render() {
         }
     }
     
-    // Создаем строку пути (path) для маски канваса
+    // 2. Form a path for visual clipping on the canvas (PNG/Screen)
     let hexPathD = '';
     hexPolys.forEach(poly => {
         hexPathD += `M ${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' L ')} Z `;
     });
 
-    // Очистка холста
     ctxOut.globalCompositeOperation = 'source-over';
     ctxOut.clearRect(0, 0, cvsW, cvsH); 
     
     ctxOut.save(); 
     
-    // Визуальная обрезка для превью и PNG
     const isCropped = document.getElementById('cropToHex')?.checked;
     if (isCropped) {
         const clipPath2D = new Path2D(hexPathD);
         ctxOut.clip(clipPath2D); 
     }
 
-    // Белая подложка на холсте
     ctxOut.fillStyle = '#ffffff';
     ctxOut.fillRect(0, 0, cvsW, cvsH); 
 
-    // Начало формирования SVG
     let svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cvsW} ${cvsH}">\n`;
     
-    // ЭКСПОРТ В SVG: Белая подложка для ручной обрезки
-    // Привязываем к галочке "Crop to Hexagons" (isCropped)
     if (isCropped) {
         svgStr += `  <g id="Layer_Crop_Hexagons" fill="#FFFFFF" stroke="none">\n`;
         hexPolys.forEach(poly => {
@@ -385,7 +379,7 @@ function render() {
         svgStr += `  </g>\n`;
     }
 
-    // Рендерим основные слои (Монохром или Цвет)
+    // --- RENDER LAYERS ---
     if (appState.currentMode === 'mono') {
         const isBlackEnabled = document.getElementById('enableBlack').checked;
         const isGrayEnabled = document.getElementById('enableGray').checked;
@@ -400,9 +394,17 @@ function render() {
             else grayPolysNegative = generateMonoPolygons('gray', { isNegative: true });
         }
 
-        if (isGrayEnabled && document.getElementById('grayOnWhite').checked) { ctxOut.fillStyle = grayColor; drawPolysArray(ctxOut, grayPolysOriginal); }
-        if (isBlackEnabled) { ctxOut.fillStyle = '#000000'; drawPolysArray(ctxOut, blackPolys); }
+        // --- 1. Gray on White (Bottom layer, goes under black) ---
+        if (isGrayEnabled && document.getElementById('grayOnWhite').checked) { 
+            ctxOut.fillStyle = grayColor; drawPolysArray(ctxOut, grayPolysOriginal); 
+        }
         
+        // --- 2. Black layer ---
+        if (isBlackEnabled) { 
+            ctxOut.fillStyle = '#000000'; drawPolysArray(ctxOut, blackPolys); 
+        }
+
+        // --- 3. Gray on Black (Top layer mask, goes only over black) ---
         if (isGrayEnabled && isBlackEnabled && document.getElementById('grayOnBlack').checked) {
             ctxTemp.clearRect(0, 0, cvsW, cvsH);
             if (grayRenderMode === 'checkered') {
@@ -416,7 +418,7 @@ function render() {
             ctxOut.globalCompositeOperation = 'source-over'; ctxOut.drawImage(tempCanvas, 0, 0);
         }
 
-        // Запись слоев в SVG (Монохром)
+        // --- WRITE LAYERS TO SVG ---
         if (grayRenderMode === 'checkered') {
             if (isGrayEnabled) { svgStr += `  <g id="Layer_Gray" fill="${grayColor}">\n`; grayPolysOriginal.forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; }); svgStr += `  </g>\n`; }
             if (isBlackEnabled) { svgStr += `  <g id="Layer_Black" fill="#000000">\n`; blackPolys.forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; }); svgStr += `  </g>\n`; }
@@ -426,7 +428,6 @@ function render() {
             if (isGrayEnabled) { svgStr += `  <g id="Layer_Gray_Negative" fill="${grayColor}">\n`; grayPolysNegative.forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; }); svgStr += `  </g>\n`; }
         }
     } else {
-        // Запись слоев в SVG (Цвет)
         if (document.getElementById('enableBlack').checked) {
             const colorLayers = generateColorPolygons('black');
             const dynamicColorMap = getShiftedColors(parseFloat(document.getElementById('val-hueShift').value) || 0);
@@ -445,14 +446,13 @@ function render() {
 
     ctxOut.restore(); 
 
-    // DEBUG ГРИДЫ (Только для экрана)
     const debugOpacity = parseInt(document.getElementById('debugOpacityInput').value) / 100;
     
     if (document.getElementById('showInitialHex')?.checked) {
         ctxOut.strokeStyle = `rgba(255, 165, 0, ${debugOpacity})`; 
         ctxOut.lineWidth = 1;
         const p2d = new Path2D(hexPathD);
-        ctxOut.stroke(p2d); // Рисуем оранжевый контур в браузере
+        ctxOut.stroke(p2d); 
     }
 
     if (document.getElementById('showRectGrid').checked) {
@@ -497,11 +497,11 @@ function render() {
     
     svgStr += `</svg>`; 
     appState.svgOutput = svgStr;
-}
-
+} // END OF RENDER FUNCTION
 
 function getExportFilename(extension) {
-    const cols = document.getElementById('colsInput').value; const rows = document.getElementById('rowsInput').value;
+    const cols = document.getElementById('colsInput').value; 
+    const rows = document.getElementById('rowsInput').value;
     const modeMap = { 'i_odd': 'A', 'i_even': 'B', 'odd': 'C', 'even': 'D' };
     let filename = appState.currentMode === 'mono' ? `xylo_${cols}x${rows}` : `xylo_color_${cols}x${rows}_H${document.getElementById('val-hueShift').value}`;
     
