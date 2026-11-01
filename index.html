@@ -29,8 +29,8 @@
         </div>
 
         <div class="control-group">
-            <label>Columns (X): <span class="val-wrapper"><input type="number" class="value-badge" id="val-cols" value="6" min="1" max="33"></span></label>
-            <input type="range" id="colsInput" min="1" max="33" value="6">
+            <label>Columns (X): <span class="val-wrapper"><input type="number" class="value-badge" id="val-cols" value="3" min="1" max="33"></span></label>
+            <input type="range" id="colsInput" min="1" max="33" value="3">
             
             <label>Rows (Y): <span class="val-wrapper"><input type="number" class="value-badge" id="val-rows" value="6" min="1" max="33"></span></label>
             <input type="range" id="rowsInput" min="1" max="33" value="6">
@@ -67,12 +67,12 @@
                     </div>
                 </div>
 
-                <label>Detail Level: <span class="val-wrapper"><input type="number" class="value-badge" id="val-blackDetail" value="33" min="10" max="150"></span></label>
-                <input type="range" id="blackDetailInput" min="10" max="150" value="33">
+                <label>Detail Level: <span class="val-wrapper"><input type="number" class="value-badge" id="val-blackDetail" value="150" min="10" max="150"></span></label>
+                <input type="range" id="blackDetailInput" min="10" max="150" value="150">
                 
                 <div id="monoSpecificBlackControls" class="active">
-                    <label>Bezier Smoothing: <span class="val-wrapper"><input type="number" class="value-badge" id="val-blackSmooth" value="0.50" min="0" max="1" step="0.01"></span></label>
-                    <input type="range" id="blackSmoothInput" min="0" max="100" value="50">
+                    <label>Bezier Smoothing: <span class="val-wrapper"><input type="number" class="value-badge" id="val-blackSmooth" value="0.33" min="0" max="1" step="0.01"></span></label>
+                    <input type="range" id="blackSmoothInput" min="0" max="100" value="33">
                     
                     <label>Min Thickness: <span class="val-wrapper"><input type="number" class="value-badge" id="val-blackMinThick" value="0" min="0" max="100">%</span></label>
                     <input type="range" id="blackMinThickInput" min="0" max="100" value="0">
@@ -137,11 +137,11 @@
                     </div>
                 </div>
 
-                <label>Detail Level: <span class="val-wrapper"><input type="number" class="value-badge" id="val-grayDetail" value="33" min="10" max="150"></span></label>
-                <input type="range" id="grayDetailInput" min="10" max="150" value="33">
+                <label>Detail Level: <span class="val-wrapper"><input type="number" class="value-badge" id="val-grayDetail" value="150" min="10" max="150"></span></label>
+                <input type="range" id="grayDetailInput" min="10" max="150" value="150">
                 
-                <label>Bezier Smoothing: <span class="val-wrapper"><input type="number" class="value-badge" id="val-graySmooth" value="0.50" min="0" max="1" step="0.01"></span></label>
-                <input type="range" id="graySmoothInput" min="0" max="100" value="50">
+                <label>Bezier Smoothing: <span class="val-wrapper"><input type="number" class="value-badge" id="val-graySmooth" value="0.33" min="0" max="1" step="0.01"></span></label>
+                <input type="range" id="graySmoothInput" min="0" max="100" value="33">
                 
                 <label>Min Thickness: <span class="val-wrapper"><input type="number" class="value-badge" id="val-grayMinThick" value="0" min="0" max="100">%</span></label>
                 <input type="range" id="grayMinThickInput" min="0" max="100" value="0">
@@ -154,7 +154,7 @@
         <div class="control-group">
             <h3 class="layer-title" style="color: #aaa; margin-bottom: 12px; font-size: 0.9rem;">Overlays</h3>
             
-            <label class="checkbox-label"><input type="checkbox" id="cropToHex"> Crop to Hexagons</label>
+            <label class="checkbox-label"><input type="checkbox" id="cropToHex" checked> Crop to Hexagons</label>
             
             <label class="checkbox-label"><input type="checkbox" id="showRectGrid"> Construction Grid</label>
             <label class="checkbox-label"><input type="checkbox" id="showHexGrid"> Rhombus Mesh</label>
@@ -178,6 +178,32 @@
         <button id="downloadBatchZipBtn" class="action-btn" style="margin-top: 10px; background-color: #9C27B0;">
             📦 Batch Export 552 PNG (ZIP)
         </button>
+        <div class="control-group" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 12px;">
+            <h3 class="layer-title" style="color: #4CAF50; margin-bottom: 10px; font-size: 0.95rem;">Auto-Rank 552 (33px Sensor)</h3>
+            
+            <label>Gaussian Blur (σ): <span class="val-wrapper"><input type="number" class="value-badge" id="val-rankBlur" value="0.33" min="0" max="5" step="0.01"> px</span></label>
+            <input type="range" id="rankBlurInput" min="0" max="5" step="0.01" value="0.33">
+
+            <label style="margin-top: 8px;">Metric:
+                <select id="rankMetricSelect" class="render-mode-select" style="margin-top: 4px; width: 100%;">
+                    <option value="hybrid" selected>Hybrid (Structure + Tone)</option>
+                    <option value="pearson">Structural Correlation (Pearson)</option>
+                    <option value="mse">Direct Tonal Match (1 - RMSE)</option>
+                </select>
+            </label>
+
+            <label style="margin-top: 8px;">Top N to Export: <span class="val-wrapper"><input type="number" class="value-badge" id="val-topNCount" value="32" min="1" max="552"></span></label>
+
+            <button id="runAutoRankBtn" class="action-btn" style="margin-top: 10px; background-color: #4CAF50; width: 100%;">
+                🔍 Оценить 552 комбинации
+            </button>
+            <button id="exportTopSvgZipBtn" class="action-btn" style="margin-top: 8px; background-color: #9C27B0; width: 100%;">
+                📦 Скачать Топ-32 SVG (+2 фона) в ZIP
+            </button>
+            <button id="toggleGalleryViewBtn" class="action-btn" style="margin-top: 6px; background-color: #555; width: 100%; display: none;">
+                🖼 Переключить: Холст / Рейтинг
+            </button>
+        </div>
     </div>
 
     <div class="viewport">
