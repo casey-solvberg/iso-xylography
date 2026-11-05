@@ -534,65 +534,63 @@ document.getElementById('downloadSvgBtn').addEventListener('click', () => {
 
 initApp();
 // ============================================================================
-// АВТО-РЕЙТИНГ 552 (33px, σ=0.33) + ЭКСПОРТ ТОП-32 SVG С 2 СЛОЯМИ ФОНОВ В ZIP
+// 16 СЕРЫХ УЗОРОВ × ТОП-2 ЧЁРНЫХ = 32 ПУТИ (10 СФИРОТ + 22 БУКВЫ)
 // ============================================================================
 
-// Принудительно применяем новые дефолты при старте (3x6, Crop to Hexagons = true, Blur = 0.33)
-(function applyCustomDefaults() {
-    const colsIn = document.getElementById('colsInput'), valCols = document.getElementById('val-cols');
-    const rowsIn = document.getElementById('rowsInput'), valRows = document.getElementById('val-rows');
-    const cropHex = document.getElementById('cropToHex');
-    if (colsIn && valCols) { colsIn.value = 3; valCols.value = 3; }
-    if (rowsIn && valRows) { rowsIn.value = 6; valRows.value = 6; }
-    if (cropHex) cropHex.checked = true;
-    triggerRender();
-})();
+const SEFIROT_SYMBOLS = [
+    "א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ז'", "ח'", "ט'", "י'",
+    "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט", "י", "כ",
+    "ל", "מ", "נ", "ס", "ע", "פ", "צ", "ק", "ר", "ש", "ת"
+];
 
-const RANK_MODES = ['i_odd', 'i_even', 'odd', 'even'];
-const RANK_MODE_MAP = { 'i_odd': 'A', 'i_even': 'B', 'odd': 'C', 'even': 'D' };
-const RANK_MODE_REV = { 'A': 'i_odd', 'B': 'i_even', 'C': 'odd', 'D': 'even' };
-const RANK_COMBOS = ['123', '132', '213', '231', '312', '321'];
-const FACE_DIAG = ['3', '1', '2'];
+// 8 отобранных комбинаций для Серого слоя (в режимах A и B дают 16 Серых узоров)
+const GRAY_8_COMBOS = ['112', '132', '212', '213', '312', '313', '321', '332'];
+const GRAY_MODES = ['A', 'B'];
 
-const SAME_COMBO_BG = {
-    '123': ['231', '312'], '231': ['123', '312'], '312': ['123', '231'],
-    '132': ['213', '321'], '213': ['321', '132'], '321': ['132', '213']
-};
-const SAME_TRIAD_BG = {
-    '123_231': ['312', '311'], '123_312': ['231', '211'],
-    '231_123': ['312', '322'], '231_312': ['123', '113'],
-    '312_123': ['231', '232'], '312_231': ['123', '122'],
-    '132_213': ['321', '311'], '132_321': ['213', '223'],
-    '213_132': ['321', '331'], '213_321': ['132', '122'],
-    '321_132': ['213', '212'], '321_213': ['132', '112']
-};
-
-function getBackgroundPair(bm, bc, gm, gc) {
-    const compMode = { 'A': 'B', 'B': 'A', 'C': 'D', 'D': 'C' }[bm];
-    let contrMode;
-    if (bm === 'A') contrMode = (gm === 'D') ? 'C' : 'D';
-    else if (bm === 'B') contrMode = (gm === 'C') ? 'D' : 'C';
-    else contrMode = (gm === 'A') ? 'B' : 'A';
-
-    let compCombo, contrCombo;
-    if (bc === gc) {
-        [compCombo, contrCombo] = SAME_COMBO_BG[bc];
-    } else if (SAME_TRIAD_BG[`${bc}_${gc}`]) {
-        [compCombo, contrCombo] = SAME_TRIAD_BG[`${bc}_${gc}`];
-    } else {
-        const unused = [0, 1, 2].map(i => ['1', '2', '3'].filter(d => d !== bc[i] && d !== gc[i]));
-        const idx2 = unused.findIndex(u => u.length === 2);
-        const c0 = unused.map(u => u[0]); c0[idx2] = unused[idx2][0];
-        const c1 = unused.map(u => u[0]); c1[idx2] = unused[idx2][1];
-        const s0 = c0.join(''), s1 = c1.join('');
-        const d0 = [0, 1, 2].filter(i => s0[i] === FACE_DIAG[i]).length;
-        const d1 = [0, 1, 2].filter(i => s1[i] === FACE_DIAG[i]).length;
-        [compCombo, contrCombo] = (d0 <= d1) ? [s0, s1] : [s1, s0];
+// Для Чёрного слоя перебираем абсолютно все 4 режима и все 27 комбинаций (111..333)
+const ALL_BLACK_MODES = ['A', 'B', 'C', 'D'];
+const ALL_27_COMBOS = [];
+for (let r = 1; r <= 3; r++) {
+    for (let g = 1; g <= 3; g++) {
+        for (let b = 1; b <= 3; b++) {
+            ALL_27_COMBOS.push(`${r}${g}${b}`);
+        }
     }
-    return { comp: `${compMode}-${compCombo}`, contr: `${contrMode}-${contrCombo}` };
 }
 
-// --- CRC32 и сборщик ZIP-архива в памяти (для 32 SVG файлов) ---
+const RANK_MODE_REV = { 'A': 'i_odd', 'B': 'i_even', 'C': 'odd', 'D': 'even' };
+const BASIC_6_COMBOS = new Set(['123', '132', '213', '231', '312', '321']);
+const FACE_DIAG = ['3', '1', '2'];
+
+// Подбор фона, комплиментарного СЕРОМУ слою (и максимально разведённого с Чёрным)
+function getComplementaryBgForGray(gm, gc, bc) {
+    // Противоположная фаза к Серому слою (для A -> B, для B -> A)
+    const bgMode = (gm === 'A') ? 'B' : 'A';
+
+    // Все комбинации (без 111/222/333), которые ни на одной грани не совпадают с Серым слоем
+    const candidates = ALL_27_COMBOS.filter(c =>
+        !(c[0] === c[1] && c[1] === c[2]) &&
+        c[0] !== gc[0] && c[1] !== gc[1] && c[2] !== gc[2]
+    );
+
+    const scored = candidates.map(c => {
+        const blackOverlap = (c[0] === bc[0] ? 1 : 0) + (c[1] === bc[1] ? 1 : 0) + (c[2] === bc[2] ? 1 : 0);
+        const uniqueDigits = new Set(c).size; // 3 = все 3 грани разные
+        const diagCount = (c[0] === FACE_DIAG[0] ? 1 : 0) + (c[1] === FACE_DIAG[1] ? 1 : 0) + (c[2] === FACE_DIAG[2] ? 1 : 0);
+        return { combo: c, blackOverlap, uniqueDigits, diagCount };
+    });
+
+    scored.sort((a, b) =>
+        (a.blackOverlap - b.blackOverlap) ||
+        (b.uniqueDigits - a.uniqueDigits) ||
+        (a.diagCount - b.diagCount)
+    );
+
+    const bgCombo = scored[0].combo;
+    return { mode: bgMode, combo: bgCombo, key: `${bgMode}-${bgCombo}`, shortTag: `BG${bgCombo}` };
+}
+
+// --- CRC32 и сборка ZIP ---
 const CRC_TABLE = new Uint32Array(256).map((_, n) => {
     let c = n;
     for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
@@ -621,6 +619,7 @@ function buildZipBlob(filesList) {
         const lv = new DataView(localHeader.buffer);
         lv.setUint32(0, 0x04034b50, true);
         lv.setUint16(4, 20, true);
+        lv.setUint16(6, 0x0800, true); // UTF-8 flag для корректных букв иврита в именах файлов
         lv.setUint16(8, 0, true);
         lv.setUint32(14, crc, true);
         lv.setUint32(18, size, true);
@@ -635,6 +634,7 @@ function buildZipBlob(filesList) {
         cv.setUint32(0, 0x02014b50, true);
         cv.setUint16(4, 20, true);
         cv.setUint16(6, 20, true);
+        cv.setUint16(8, 0x0800, true); // UTF-8 flag
         cv.setUint32(16, crc, true);
         cv.setUint32(20, size, true);
         cv.setUint32(24, size, true);
@@ -664,7 +664,7 @@ function buildZipBlob(filesList) {
     return new Blob(chunks, { type: 'application/zip' });
 }
 
-// --- Двухпроходное размытие по Гауссу (поддерживает дробные σ, такие как 0.33) ---
+// --- Размытие по Гауссу ---
 function applyGaussianBlurGray(srcFloat, w, h, sigma) {
     if (sigma <= 0.01) return new Float32Array(srcFloat);
     const radius = Math.max(1, Math.ceil(sigma * 3));
@@ -751,7 +751,7 @@ function computeSimilarity(refArr, candArr, maskArr, metricType) {
     return (0.65 * pearson + 0.35 * tonalMatch) * 100;
 }
 
-// --- Генерация массива полигонов для любого (prefix, modeLetter, combo, isNegative) ---
+// --- Генерация полигонов для одного состояния ---
 function buildMonoPolygonsData(prefix, modeLetter, combo, isNegative = false) {
     const mode = RANK_MODE_REV[modeLetter] || modeLetter;
     const cols = parseInt(document.getElementById('colsInput').value);
@@ -855,7 +855,7 @@ function polysArrayToSvgGroup(groupId, fillHex, polys, indent = '  ') {
     return s;
 }
 
-// --- Стили и контейнер окна рейтинга ---
+// --- Стили и DOM галереи (строго 32 карточки) ---
 const galleryStyle = document.createElement('style');
 galleryStyle.textContent = `
     #rankGalleryContainer {
@@ -880,24 +880,23 @@ galleryStyle.textContent = `
     }
     .rank-btn.active { background: #4CAF50; border-color: #4CAF50; font-weight: bold; }
     .rank-grid {
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
         gap: 12px;
     }
     .rank-card {
-        background: #252525; border: 1px solid #3a3a3a; border-radius: 6px;
+        background: #252525; border: 1px solid rgba(156, 39, 176, 0.65); border-radius: 6px;
         padding: 8px; text-align: center; cursor: pointer; transition: transform 0.12s, border-color 0.12s;
     }
     .rank-card:hover { transform: translateY(-2px); border-color: #4CAF50; }
-    .rank-card.top-item { border-color: rgba(156, 39, 176, 0.75); }
     .rank-card img {
-        width: auto; height: 88px; max-width: 100%; background: #fff;
+        width: auto; height: 92px; max-width: 100%; background: #fff;
         border-radius: 3px; margin-bottom: 6px; object-fit: contain;
     }
     .pixelated-img { image-rendering: pixelated; }
     .rank-badge { display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px; color: #aaa; }
     .rank-score { color: #4CAF50; font-weight: bold; }
-    .rank-title { font-size: 0.82rem; font-weight: bold; color: #fff; margin-bottom: 4px; }
-    .rank-bg-info { font-size: 0.72rem; color: #bbb; background: #1b1b1b; padding: 3px 4px; border-radius: 3px; }
+    .rank-title { font-size: 0.84rem; font-weight: bold; color: #fff; margin-bottom: 4px; direction: ltr; }
+    .rank-sub { font-size: 0.72rem; color: #bbb; background: #1b1b1b; padding: 3px 4px; border-radius: 3px; }
 `;
 document.head.appendChild(galleryStyle);
 
@@ -906,13 +905,15 @@ const galleryEl = document.createElement('div');
 galleryEl.id = 'rankGalleryContainer';
 viewportEl.appendChild(galleryEl);
 
-let lastRankedResults = [];
+let selected32List = [];
 let lastRefThumbs = { blurredUrl: '', crispUrl: '', w: 33, h: 33 };
-let galleryViewState = { showBlurred: true, descending: true };
+let galleryViewState = { showBlurred: false };
 
-// Кеш полигонов для мгновенной сборки SVG
 let cachedBlackPolys = new Map();
 let cachedGrayPolys = new Map();
+let cachedBlackPaths = new Map();
+let cachedGrayPaths = new Map();
+let cachedHexClipPath = null;
 
 const rankBlurInput = document.getElementById('rankBlurInput');
 const valRankBlur = document.getElementById('val-rankBlur');
@@ -920,15 +921,6 @@ if (rankBlurInput && valRankBlur) {
     rankBlurInput.addEventListener('input', (e) => { valRankBlur.value = e.target.value; });
     valRankBlur.addEventListener('change', (e) => { rankBlurInput.value = e.target.value; });
 }
-
-const topNInput = document.getElementById('val-topNCount');
-topNInput?.addEventListener('change', () => {
-    const n = Math.max(1, Math.min(552, parseInt(topNInput.value) || 32));
-    topNInput.value = n;
-    const expBtn = document.getElementById('exportTopSvgZipBtn');
-    if (expBtn) expBtn.textContent = `📦 Скачать Топ-${n} SVG (+2 фона) в ZIP`;
-    if (galleryEl.style.display === 'block') renderGalleryDOM();
-});
 
 function setGalleryVisibility(showGallery) {
     const toggleBtn = document.getElementById('toggleGalleryViewBtn');
@@ -941,12 +933,83 @@ document.getElementById('toggleGalleryViewBtn')?.addEventListener('click', () =>
     setGalleryVisibility(galleryEl.style.display !== 'block');
 });
 
+function ensureItemThumbnails(item) {
+    if (item.blurredUrl && item.crispUrl) return;
+    const cvsW = mainCanvas.width, cvsH = mainCanvas.height;
+    const minSide = Math.min(cvsW, cvsH);
+    const scale33 = 33 / minSide;
+    const thumbW = lastRefThumbs.w, thumbH = lastRefThumbs.h;
+    const crispW = thumbW * 2, crispH = thumbH * 2;
+    const scaleCrisp = scale33 * 2;
+    const sigma = parseFloat(document.getElementById('val-rankBlur').value) || 0;
+    const showOnWhite = document.getElementById('grayOnWhite').checked;
+    const showOnBlack = document.getElementById('grayOnBlack').checked;
+    const isCropped = document.getElementById('cropToHex')?.checked;
+
+    const crispCvs = document.createElement('canvas');
+    crispCvs.width = crispW; crispCvs.height = crispH;
+    const ctxCrisp = crispCvs.getContext('2d');
+
+    const crispTempCvs = document.createElement('canvas');
+    crispTempCvs.width = crispW; crispTempCvs.height = crispH;
+    const ctxCrispTemp = crispTempCvs.getContext('2d');
+
+    const bPath = cachedBlackPaths.get(item.bKey);
+    const gPath = cachedGrayPaths.get(item.gKey);
+
+    ctxCrisp.fillStyle = '#ffffff';
+    ctxCrisp.fillRect(0, 0, crispW, crispH);
+    ctxCrisp.save();
+    ctxCrisp.scale(scaleCrisp, scaleCrisp);
+    if (isCropped && cachedHexClipPath) ctxCrisp.clip(cachedHexClipPath);
+    if (showOnWhite) { ctxCrisp.fillStyle = '#7f7f7f'; ctxCrisp.fill(gPath.orig); }
+    ctxCrisp.fillStyle = '#000000';
+    ctxCrisp.fill(bPath);
+    ctxCrisp.restore();
+
+    if (showOnBlack) {
+        ctxCrispTemp.clearRect(0, 0, crispW, crispH);
+        ctxCrispTemp.save();
+        ctxCrispTemp.scale(scaleCrisp, scaleCrisp);
+        if (isCropped && cachedHexClipPath) ctxCrispTemp.clip(cachedHexClipPath);
+        ctxCrispTemp.globalCompositeOperation = 'source-over';
+        ctxCrispTemp.fillStyle = '#000000';
+        ctxCrispTemp.fill(bPath);
+        ctxCrispTemp.globalCompositeOperation = 'source-in';
+        ctxCrispTemp.fillStyle = '#7f7f7f';
+        ctxCrispTemp.fill(gPath.neg);
+        ctxCrispTemp.restore();
+        ctxCrisp.drawImage(crispTempCvs, 0, 0);
+    }
+
+    item.crispUrl = crispCvs.toDataURL('image/png');
+
+    const sensorCvs = document.createElement('canvas');
+    sensorCvs.width = thumbW; sensorCvs.height = thumbH;
+    const ctxSensor = sensorCvs.getContext('2d');
+    ctxSensor.drawImage(crispCvs, 0, 0, thumbW, thumbH);
+    const sData = ctxSensor.getImageData(0, 0, thumbW, thumbH).data;
+    const rawGray = new Float32Array(thumbW * thumbH);
+    for (let k = 0; k < rawGray.length; k++) rawGray[k] = sData[k * 4];
+    const blurredGray = applyGaussianBlurGray(rawGray, thumbW, thumbH, sigma);
+    item.blurredUrl = grayFloatToDataURL(blurredGray, thumbW, thumbH);
+}
+
+function applyComboToUI(prefix, modeLetter, combo) {
+    const modeVal = RANK_MODE_REV[modeLetter];
+    document.querySelector(`input[name="${prefix}_mode"][value="${modeVal}"]`).checked = true;
+    if (BASIC_6_COMBOS.has(combo)) {
+        document.querySelector(`input[name="${prefix}_combo"][value="${combo}"]`).checked = true;
+    } else {
+        document.querySelector(`input[name="${prefix}_combo"][value="custom"]`).checked = true;
+        document.getElementById(`${prefix}_combo_select`).value = combo;
+    }
+}
+
 function renderGalleryDOM() {
-    if (lastRankedResults.length === 0) return;
-    const topN = Math.max(1, Math.min(552, parseInt(document.getElementById('val-topNCount')?.value) || 32));
-    const sorted = [...lastRankedResults].sort((a, b) =>
-        galleryViewState.descending ? (b.score - a.score) : (a.score - b.score)
-    );
+    if (selected32List.length === 0) return;
+    selected32List.forEach(ensureItemThumbnails);
+
     const imgClass = galleryViewState.showBlurred ? 'pixelated-img' : '';
     const refImgSrc = galleryViewState.showBlurred ? lastRefThumbs.blurredUrl : lastRefThumbs.crispUrl;
 
@@ -956,21 +1019,18 @@ function renderGalleryDOM() {
                 <img src="${refImgSrc}" class="${imgClass}">
                 <div>
                     <div style="font-weight:bold; font-size:0.85rem; color:#4CAF50;">Эталон (${lastRefThumbs.w}×${lastRefThumbs.h} px)</div>
-                    <div style="font-size:0.75rem; color:#aaa;">Гаусс σ = ${document.getElementById('val-rankBlur').value} px</div>
+                    <div style="font-size:0.75rem; color:#aaa;">32 Пути (16 Серых × Топ-2 Чёрных)</div>
                 </div>
             </div>
             <div class="rank-controls">
+                <button class="rank-btn ${!galleryViewState.showBlurred ? 'active' : ''}" id="btnViewCrisp">
+                    ✨ Чёткие миниатюры
+                </button>
                 <button class="rank-btn ${galleryViewState.showBlurred ? 'active' : ''}" id="btnViewBlur">
                     👁 33px + Гаусс
                 </button>
-                <button class="rank-btn ${!galleryViewState.showBlurred ? 'active' : ''}" id="btnViewCrisp">
-                    ✨ Чёткие
-                </button>
-                <button class="rank-btn ${galleryViewState.descending ? 'active' : ''}" id="btnSortDir">
-                    ${galleryViewState.descending ? '⬇ По убыванию (1 → 552)' : '⬆ По возрастанию (552 → 1)'}
-                </button>
                 <button class="rank-btn" id="btnToolbarExportZip" style="background:#9C27B0; border-color:#9C27B0; font-weight:bold;">
-                    📦 Скачать Топ-${topN} SVG (+2 фона) в ZIP
+                    📦 Скачать 32 SVG (+Фон) в ZIP
                 </button>
                 <button class="rank-btn" id="btnBackToCanvas" style="background:#2196F3; border-color:#2196F3;">
                     🖼 На холст
@@ -978,17 +1038,15 @@ function renderGalleryDOM() {
             </div>
         </div>
         <div class="rank-grid">
-            ${sorted.map((item) => `
-                <div class="rank-card ${item.rank <= topN ? 'top-item' : ''}" data-bm="${item.bm}" data-bc="${item.bc}" data-gm="${item.gm}" data-gc="${item.gc}">
+            ${selected32List.map((item) => `
+                <div class="rank-card" data-bm="${item.bm}" data-bc="${item.bc}" data-gm="${item.gm}" data-gc="${item.gc}">
                     <div class="rank-badge">
-                        <span><b>#${item.rank}</b> (№${item.tableIdx})</span>
+                        <span>Узор ${item.patternNum} (Топ-${item.topNum})</span>
                         <span class="rank-score">${item.score.toFixed(1)}%</span>
                     </div>
-                    <img src="${galleryViewState.showBlurred ? item.blurredUrl : item.crispUrl}" class="${imgClass}" loading="lazy">
-                    <div class="rank-title">${item.bKey} + ${item.gKey}</div>
-                    <div class="rank-bg-info">
-                        Компл: <b>${item.bg.comp}</b> | Контр: <b>${item.bg.contr}</b>
-                    </div>
+                    <img src="${galleryViewState.showBlurred ? item.blurredUrl : item.crispUrl}" class="${imgClass}">
+                    <div class="rank-title">${item.displayName}</div>
+                    <div class="rank-sub">Фон (к ${item.gm}${item.gc}): <b>${item.bg.mode}${item.bg.combo}</b></div>
                 </div>
             `).join('')}
         </div>
@@ -996,16 +1054,13 @@ function renderGalleryDOM() {
 
     document.getElementById('btnViewBlur').onclick = () => { galleryViewState.showBlurred = true; renderGalleryDOM(); };
     document.getElementById('btnViewCrisp').onclick = () => { galleryViewState.showBlurred = false; renderGalleryDOM(); };
-    document.getElementById('btnSortDir').onclick = () => { galleryViewState.descending = !galleryViewState.descending; renderGalleryDOM(); };
-    document.getElementById('btnToolbarExportZip').onclick = () => exportTopNSvgZip();
+    document.getElementById('btnToolbarExportZip').onclick = () => export32SvgZip();
     document.getElementById('btnBackToCanvas').onclick = () => setGalleryVisibility(false);
 
     galleryEl.querySelectorAll('.rank-card').forEach(card => {
         card.addEventListener('click', () => {
-            document.querySelector(`input[name="black_mode"][value="${RANK_MODE_REV[card.dataset.bm]}"]`).checked = true;
-            document.querySelector(`input[name="black_combo"][value="${card.dataset.bc}"]`).checked = true;
-            document.querySelector(`input[name="gray_mode"][value="${RANK_MODE_REV[card.dataset.gm]}"]`).checked = true;
-            document.querySelector(`input[name="gray_combo"][value="${card.dataset.gc}"]`).checked = true;
+            applyComboToUI('black', card.dataset.bm, card.dataset.bc);
+            applyComboToUI('gray', card.dataset.gm, card.dataset.gc);
             document.getElementById('grayRenderMode').value = 'continuous';
             setGalleryVisibility(false);
             render();
@@ -1013,8 +1068,8 @@ function renderGalleryDOM() {
     });
 }
 
-// --- Вычисление рейтинга 552 комбинаций ---
-async function computeRanking552() {
+// --- Расчёт 16 Серых узоров × все 108 Чёрных и формирование зигзаг-списка из 32 ---
+async function compute32SefirotPatterns() {
     if (!sourceImage.src || !mainCanvas.width) return;
     const btn = document.getElementById('runAutoRankBtn');
     if (btn) btn.disabled = true;
@@ -1045,25 +1100,25 @@ async function computeRanking552() {
             hexPathD += `M ${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' L ')} Z `;
         }
     }
-    const hexClipPath = new Path2D(hexPathD);
+    cachedHexClipPath = new Path2D(hexPathD);
 
     const sensorCvs = document.createElement('canvas');
     sensorCvs.width = thumbW; sensorCvs.height = thumbH;
     const ctxSensor = sensorCvs.getContext('2d', { willReadFrequently: true });
 
+    const sensorTempCvs = document.createElement('canvas');
+    sensorTempCvs.width = thumbW; sensorTempCvs.height = thumbH;
+    const ctxSensorTemp = sensorTempCvs.getContext('2d');
+
     const crispCvs = document.createElement('canvas');
     crispCvs.width = crispW; crispCvs.height = crispH;
     const ctxCrisp = crispCvs.getContext('2d');
-
-    const crispTempCvs = document.createElement('canvas');
-    crispTempCvs.width = crispW; crispTempCvs.height = crispH;
-    const ctxCrispTemp = crispTempCvs.getContext('2d');
 
     ctxSensor.clearRect(0, 0, thumbW, thumbH);
     ctxSensor.save();
     ctxSensor.scale(scale33, scale33);
     ctxSensor.fillStyle = '#000';
-    ctxSensor.fill(hexClipPath);
+    ctxSensor.fill(cachedHexClipPath);
     ctxSensor.restore();
     const maskData = ctxSensor.getImageData(0, 0, thumbW, thumbH).data;
     const activeMask = new Uint8Array(thumbW * thumbH);
@@ -1073,7 +1128,7 @@ async function computeRanking552() {
     ctxCrisp.fillRect(0, 0, crispW, crispH);
     ctxCrisp.save();
     ctxCrisp.scale(scaleCrisp, scaleCrisp);
-    ctxCrisp.clip(hexClipPath);
+    ctxCrisp.clip(cachedHexClipPath);
     ctxCrisp.drawImage(hiddenCanvas, 0, 0);
     ctxCrisp.restore();
 
@@ -1094,82 +1149,100 @@ async function computeRanking552() {
 
     lastRefThumbs = { blurredUrl: refBlurredUrl, crispUrl: refCrispUrl, w: thumbW, h: thumbH };
 
-    const states = [];
-    for (const mode of RANK_MODES) {
-        for (const combo of RANK_COMBOS) {
-            states.push({ mLetter: RANK_MODE_MAP[mode], mode, combo, key: `${RANK_MODE_MAP[mode]}-${combo}` });
+    // 1. Формируем 16 Серых состояний (Узор 1 .. Узор 16)
+    const grayStates = [];
+    for (const gm of GRAY_MODES) {
+        for (const gc of GRAY_8_COMBOS) {
+            grayStates.push({ mLetter: gm, combo: gc, key: `${gm}-${gc}` });
+        }
+    }
+
+    // 2. Формируем все 108 Чёрных состояний (4 режима A,B,C,D × 27 комбинаций 111..333)
+    const blackStates = [];
+    for (const bm of ALL_BLACK_MODES) {
+        for (const bc of ALL_27_COMBOS) {
+            blackStates.push({ mLetter: bm, combo: bc, key: `${bm}-${bc}` });
         }
     }
 
     cachedBlackPolys.clear();
     cachedGrayPolys.clear();
-    const blackPaths = new Map();
-    const grayPaths = new Map();
+    cachedBlackPaths.clear();
+    cachedGrayPaths.clear();
 
-    for (let i = 0; i < states.length; i++) {
-        const s = states[i];
-        if (btn) btn.textContent = `⏳ Геометрия: ${i + 1} / 24...`;
+    // Предрасчёт 16 Серых узоров
+    for (let i = 0; i < grayStates.length; i++) {
+        const gs = grayStates[i];
+        if (btn) btn.textContent = `⏳ Серые узоры: ${i + 1} / 16...`;
         await new Promise(r => setTimeout(r, 0));
-
-        const bPolys = buildMonoPolygonsData('black', s.mLetter, s.combo, false);
-        const gOrigPolys = buildMonoPolygonsData('gray', s.mLetter, s.combo, false);
-        const gNegPolys = buildMonoPolygonsData('gray', s.mLetter, s.combo, true);
-
-        cachedBlackPolys.set(s.key, bPolys);
-        cachedGrayPolys.set(s.key, { orig: gOrigPolys, neg: gNegPolys });
-
-        blackPaths.set(s.key, polysArrayToPath2D(bPolys));
-        grayPaths.set(s.key, {
-            orig: polysArrayToPath2D(gOrigPolys),
-            neg:  polysArrayToPath2D(gNegPolys)
-        });
+        const gOrig = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, false);
+        const gNeg = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, true);
+        cachedGrayPolys.set(gs.key, { orig: gOrig, neg: gNeg });
+        cachedGrayPaths.set(gs.key, { orig: polysArrayToPath2D(gOrig), neg: polysArrayToPath2D(gNeg) });
     }
 
-    const results = [];
-    let tableIdx = 1;
+    // Предрасчёт всех 108 Чёрных вариантов
+    for (let i = 0; i < blackStates.length; i++) {
+        const bs = blackStates[i];
+        if (i % 12 === 0) {
+            if (btn) btn.textContent = `⏳ Чёрные варианты: ${i + 1} / 108...`;
+            await new Promise(r => setTimeout(r, 0));
+        }
+        const bPolys = buildMonoPolygonsData('black', bs.mLetter, bs.combo, false);
+        cachedBlackPolys.set(bs.key, bPolys);
+        cachedBlackPaths.set(bs.key, polysArrayToPath2D(bPolys));
+    }
+
+    // 3. Под каждый из 16 Серых узоров перебираем все Чёрные и оставляем Топ-2
+    const top2PerGray = []; // массив из 16 элементов: [ [top1, top2], ... ]
     const showOnWhite = document.getElementById('grayOnWhite').checked;
     const showOnBlack = document.getElementById('grayOnBlack').checked;
     const isCropped = document.getElementById('cropToHex')?.checked;
 
-    for (const bState of states) {
-        const bPath = blackPaths.get(bState.key);
-        for (const gState of states) {
-            if (bState.key === gState.key) continue;
-            const gPath = grayPaths.get(gState.key);
+    for (let pIdx = 0; pIdx < grayStates.length; pIdx++) {
+        const gState = grayStates[pIdx];
+        const gPath = cachedGrayPaths.get(gState.key);
+        const candidatesForThisGray = [];
 
-            ctxCrisp.globalCompositeOperation = 'source-over';
-            ctxCrisp.fillStyle = '#ffffff';
-            ctxCrisp.fillRect(0, 0, crispW, crispH);
-            ctxCrisp.save();
-            ctxCrisp.scale(scaleCrisp, scaleCrisp);
-            if (isCropped) ctxCrisp.clip(hexClipPath);
+        if (btn) btn.textContent = `🔍 Отбор Топ-2 для Серого узора ${pIdx + 1} / 16...`;
+        await new Promise(r => setTimeout(r, 0));
+
+        for (const bState of blackStates) {
+            if (bState.key === gState.key) continue;
+            const bPath = cachedBlackPaths.get(bState.key);
+
+            ctxSensor.globalCompositeOperation = 'source-over';
+            ctxSensor.fillStyle = '#ffffff';
+            ctxSensor.fillRect(0, 0, thumbW, thumbH);
+            ctxSensor.save();
+            ctxSensor.scale(scale33, scale33);
+            if (isCropped) ctxSensor.clip(cachedHexClipPath);
 
             if (showOnWhite) {
-                ctxCrisp.fillStyle = '#7f7f7f';
-                ctxCrisp.fill(gPath.orig);
+                ctxSensor.fillStyle = '#7f7f7f';
+                ctxSensor.fill(gPath.orig);
             }
-            ctxCrisp.fillStyle = '#000000';
-            ctxCrisp.fill(bPath);
-            ctxCrisp.restore();
+            ctxSensor.fillStyle = '#000000';
+            ctxSensor.fill(bPath);
+            ctxSensor.restore();
 
             if (showOnBlack) {
-                ctxCrispTemp.clearRect(0, 0, crispW, crispH);
-                ctxCrispTemp.save();
-                ctxCrispTemp.scale(scaleCrisp, scaleCrisp);
-                if (isCropped) ctxCrispTemp.clip(hexClipPath);
-                ctxCrispTemp.globalCompositeOperation = 'source-over';
-                ctxCrispTemp.fillStyle = '#000000';
-                ctxCrispTemp.fill(bPath);
-                ctxCrispTemp.globalCompositeOperation = 'source-in';
-                ctxCrispTemp.fillStyle = '#7f7f7f';
-                ctxCrispTemp.fill(gPath.neg);
-                ctxCrispTemp.restore();
+                ctxSensorTemp.clearRect(0, 0, thumbW, thumbH);
+                ctxSensorTemp.save();
+                ctxSensorTemp.scale(scale33, scale33);
+                if (isCropped) ctxSensorTemp.clip(cachedHexClipPath);
+                ctxSensorTemp.globalCompositeOperation = 'source-over';
+                ctxSensorTemp.fillStyle = '#000000';
+                ctxSensorTemp.fill(bPath);
+                ctxSensorTemp.globalCompositeOperation = 'source-in';
+                ctxSensorTemp.fillStyle = '#7f7f7f';
+                ctxSensorTemp.fill(gPath.neg);
+                ctxSensorTemp.restore();
 
-                ctxCrisp.globalCompositeOperation = 'source-over';
-                ctxCrisp.drawImage(crispTempCvs, 0, 0);
+                ctxSensor.globalCompositeOperation = 'source-over';
+                ctxSensor.drawImage(sensorTempCvs, 0, 0);
             }
 
-            ctxSensor.drawImage(crispCvs, 0, 0, thumbW, thumbH);
             const sData = ctxSensor.getImageData(0, 0, thumbW, thumbH).data;
             const rawGray = new Float32Array(thumbW * thumbH);
             for (let k = 0; k < rawGray.length; k++) rawGray[k] = sData[k * 4];
@@ -1177,49 +1250,68 @@ async function computeRanking552() {
 
             const score = computeSimilarity(refBlurredGray, blurredGray, activeMask, metricType);
 
-            results.push({
-                tableIdx,
+            candidatesForThisGray.push({
+                patternNum: pIdx + 1,
                 bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
                 gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
-                bg: getBackgroundPair(bState.mLetter, bState.combo, gState.mLetter, gState.combo),
+                bg: getComplementaryBgForGray(gState.mLetter, gState.combo, bState.combo),
                 score,
-                crispUrl: crispCvs.toDataURL('image/png'),
-                blurredUrl: grayFloatToDataURL(blurredGray, thumbW, thumbH)
+                crispUrl: null,
+                blurredUrl: null
             });
-
-            if (tableIdx % 110 === 0) {
-                if (btn) btn.textContent = `🔍 Сравнение 33px: ${tableIdx} / 552...`;
-                await new Promise(r => setTimeout(r, 0));
-            }
-            tableIdx++;
         }
+
+        candidatesForThisGray.sort((a, b) => b.score - a.score);
+        const top1 = { ...candidatesForThisGray[0], topNum: 1 };
+        const top2 = { ...candidatesForThisGray[1], topNum: 2 };
+        top2PerGray.push([top1, top2]);
     }
 
-    results.sort((a, b) => b.score - a.score);
-    results.forEach((item, idx) => { item.rank = idx + 1; });
-    lastRankedResults = results;
+    // 4. Выстраиваем 32 узора в точном зигзаг-порядке:
+    // Прямой ход (1..16): Топ-1 Узор 1, Топ-2 Узор 2, Топ-1 Узор 3, Топ-2 Узор 4, ..., Топ-2 Узор 16
+    // Обратный ход (16..1): Топ-1 Узор 16, Топ-2 Узор 15, ..., Топ-1 Узор 2, Топ-2 Узор 1
+    const ordered32 = [];
+    for (let i = 0; i < 16; i++) {
+        const pickIdx = (i % 2 === 0) ? 0 : 1; // чётный индекс массива (Узор 1, 3, 5...) -> Топ-1 (0), нечётный (Узор 2, 4, 6...) -> Топ-2 (1)
+        ordered32.push(top2PerGray[i][pickIdx]);
+    }
+    for (let i = 15; i >= 0; i--) {
+        const pickIdx = (i % 2 === 1) ? 0 : 1; // для Узора 16 (i=15) -> Топ-1 (0), для Узора 15 (i=14) -> Топ-2 (1), ..., для Узора 1 (i=0) -> Топ-2 (1)
+        ordered32.push(top2PerGray[i][pickIdx]);
+    }
+
+    // Присваиваем номера 1..32, символы Сфирот/Букв и формируем итоговое имя:
+    // "1 СООТВЕТСТВУЮЩАЯ_БУКВА_СФЕРОТ A### B### BG###"
+    ordered32.forEach((item, idx) => {
+        const seqNum = idx + 1;
+        const symbol = SEFIROT_SYMBOLS[idx];
+        item.seqNum = seqNum;
+        item.symbol = symbol;
+        item.displayName = `${seqNum} ${symbol} ${item.bm}${item.bc} ${item.gm}${item.gc} ${item.bg.shortTag}`;
+        item.fileName = `${item.displayName}.svg`;
+    });
+
+    selected32List = ordered32;
 
     if (btn) {
         btn.disabled = false;
-        btn.textContent = '🔍 Пересчитать рейтинг 552';
+        btn.textContent = '🔍 Пересчитать 32 узора';
     }
 }
 
 document.getElementById('runAutoRankBtn')?.addEventListener('click', async () => {
-    await computeRanking552();
+    await compute32SefirotPatterns();
     setGalleryVisibility(true);
     renderGalleryDOM();
 });
 
-// --- ЭКСПОРТ ТОП-N МНОГОСЛОЙНЫХ SVG (ОБЪЕКТ + 2 СЛОЯ ФОНА) В ZIP ---
-async function exportTopNSvgZip() {
+// --- ЭКСПОРТ 32 SVG С КОМПЛИМЕНТАРНЫМ СЕРОМУ СЛОЮ ФОНОМ В ZIP ---
+async function export32SvgZip() {
     const expBtn = document.getElementById('exportTopSvgZipBtn');
     const toolbarBtn = document.getElementById('btnToolbarExportZip');
-    const topN = Math.max(1, Math.min(552, parseInt(document.getElementById('val-topNCount')?.value) || 32));
 
-    // Если рейтинг ещё не считали — сначала считаем его автоматически
-    if (lastRankedResults.length === 0) {
-        await computeRanking552();
+    if (selected32List.length === 0) {
+        await compute32SefirotPatterns();
     }
 
     if (expBtn) expBtn.disabled = true;
@@ -1232,7 +1324,6 @@ async function exportTopNSvgZip() {
     const isCropped = document.getElementById('cropToHex')?.checked;
     const grayColor = '#7f7f7f';
 
-    // Геометрия базовых гексагонов
     const hexPolys = [];
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
@@ -1249,50 +1340,26 @@ async function exportTopNSvgZip() {
         }
     }
 
-    const topItems = lastRankedResults.slice(0, topN);
     const zipFiles = [];
 
-    for (let i = 0; i < topItems.length; i++) {
-        const item = topItems[i];
-        const statusText = `📦 Сборка SVG: ${i + 1} / ${topN}...`;
+    for (let i = 0; i < selected32List.length; i++) {
+        const item = selected32List[i];
+        const statusText = `📦 Сборка SVG: ${i + 1} / 32...`;
         if (expBtn) expBtn.textContent = statusText;
         if (toolbarBtn) toolbarBtn.textContent = statusText;
         await new Promise(r => setTimeout(r, 0));
 
-        // Достаём или достраиваем полигоны Чёрного слоя объекта, Серого слоя и двух Фонов (включая Custom-комбо)
-        if (!cachedBlackPolys.has(item.bKey)) {
-            cachedBlackPolys.set(item.bKey, buildMonoPolygonsData('black', item.bm, item.bc, false));
-        }
-        if (!cachedGrayPolys.has(item.gKey)) {
-            cachedGrayPolys.set(item.gKey, {
-                orig: buildMonoPolygonsData('gray', item.gm, item.gc, false),
-                neg:  buildMonoPolygonsData('gray', item.gm, item.gc, true)
-            });
-        }
-        if (!cachedBlackPolys.has(item.bg.comp)) {
-            const [m, c] = item.bg.comp.split('-');
-            cachedBlackPolys.set(item.bg.comp, buildMonoPolygonsData('black', m, c, false));
-        }
-        if (!cachedBlackPolys.has(item.bg.contr)) {
-            const [m, c] = item.bg.contr.split('-');
-            cachedBlackPolys.set(item.bg.contr, buildMonoPolygonsData('black', m, c, false));
-        }
-
         const blackPolys = cachedBlackPolys.get(item.bKey);
         const grayPolys = cachedGrayPolys.get(item.gKey);
-        const bgCompPolys = cachedBlackPolys.get(item.bg.comp);
-        const bgContrPolys = cachedBlackPolys.get(item.bg.contr);
+        const bgPolys = cachedBlackPolys.get(item.bg.key);
 
         let svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cvsW} ${cvsH}">\n`;
 
-        // 1. Слой: Контрастный фон (только чёрная ксилография)
-        svgStr += polysArrayToSvgGroup(`Background_Contrasting_${item.bg.contr}`, '#000000', bgContrPolys, '  ');
+        // 1. Слой Фона (чисто чёрный, комплиментарный Серому слою)
+        svgStr += polysArrayToSvgGroup(`Background_${item.bg.mode}${item.bg.combo}`, '#000000', bgPolys, '  ');
 
-        // 2. Слой: Комплиментарный фон (только чёрная ксилография)
-        svgStr += polysArrayToSvgGroup(`Background_Complementary_${item.bg.comp}`, '#000000', bgCompPolys, '  ');
-
-        // 3. Группа Объекта (Чёрный + Серый Continuous)
-        svgStr += `  <g id="Object_${item.bKey}_${item.gKey}_CNT">\n`;
+        // 2. Группа Объекта
+        svgStr += `  <g id="Object_${item.bm}${item.bc}_${item.gm}${item.gc}_CNT">\n`;
         if (isCropped) {
             svgStr += polysArrayToSvgGroup('Layer_Crop_Hexagons', '#FFFFFF', hexPolys, '    ');
         }
@@ -1303,29 +1370,25 @@ async function exportTopNSvgZip() {
 
         svgStr += `</svg>`;
 
-        const rankStr = String(item.rank).padStart(2, '0');
-        const tblStr = String(item.tableIdx).padStart(3, '0');
-        const fileName = `Top${rankStr}_No${tblStr}_xylo_${cols}x${rows}_${item.bKey}_${item.gKey}_CNT__BG_${item.bg.comp}_${item.bg.contr}.svg`;
-
-        zipFiles.push({ name: fileName, content: svgStr });
+        zipFiles.push({ name: item.fileName, content: svgStr });
     }
 
     const zipBlob = buildZipBlob(zipFiles);
     const url = URL.createObjectURL(zipBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `xylo_${cols}x${rows}_Top${topN}_with_Backgrounds.zip`;
+    link.download = `xylo_${cols}x${rows}_32_Sefirot.zip`;
     link.click();
     URL.revokeObjectURL(url);
 
     if (expBtn) {
         expBtn.disabled = false;
-        expBtn.textContent = `📦 Скачать Топ-${topN} SVG (+2 фона) в ZIP`;
+        expBtn.textContent = '📦 Скачать 32 SVG (+Фон) в ZIP';
     }
     if (toolbarBtn) {
         toolbarBtn.disabled = false;
-        toolbarBtn.textContent = `📦 Скачать Топ-${topN} SVG (+2 фона) в ZIP`;
+        toolbarBtn.textContent = '📦 Скачать 32 SVG (+Фон) в ZIP';
     }
 }
 
-document.getElementById('exportTopSvgZipBtn')?.addEventListener('click', exportTopNSvgZip);
+document.getElementById('exportTopSvgZipBtn')?.addEventListener('click', export32SvgZip);
