@@ -331,8 +331,6 @@ function render() {
     };
 
     // --- EXECUTE & COMPOSITE ---
-    
-    // 1. Create an array of coordinates for all base hexagons
     const hexPolys = [];
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
@@ -349,7 +347,6 @@ function render() {
         }
     }
     
-    // 2. Form a path for visual clipping on the canvas (PNG/Screen)
     let hexPathD = '';
     hexPolys.forEach(poly => {
         hexPathD += `M ${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' L ')} Z `;
@@ -394,17 +391,14 @@ function render() {
             else grayPolysNegative = generateMonoPolygons('gray', { isNegative: true });
         }
 
-        // --- 1. Gray on White (Bottom layer, goes under black) ---
         if (isGrayEnabled && document.getElementById('grayOnWhite').checked) { 
             ctxOut.fillStyle = grayColor; drawPolysArray(ctxOut, grayPolysOriginal); 
         }
         
-        // --- 2. Black layer ---
         if (isBlackEnabled) { 
             ctxOut.fillStyle = '#000000'; drawPolysArray(ctxOut, blackPolys); 
         }
 
-        // --- 3. Gray on Black (Top layer mask, goes only over black) ---
         if (isGrayEnabled && isBlackEnabled && document.getElementById('grayOnBlack').checked) {
             ctxTemp.clearRect(0, 0, cvsW, cvsH);
             if (grayRenderMode === 'checkered') {
@@ -418,7 +412,6 @@ function render() {
             ctxOut.globalCompositeOperation = 'source-over'; ctxOut.drawImage(tempCanvas, 0, 0);
         }
 
-        // --- WRITE LAYERS TO SVG ---
         if (grayRenderMode === 'checkered') {
             if (isGrayEnabled) { svgStr += `  <g id="Layer_Gray" fill="${grayColor}">\n`; grayPolysOriginal.forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; }); svgStr += `  </g>\n`; }
             if (isBlackEnabled) { svgStr += `  <g id="Layer_Black" fill="#000000">\n`; blackPolys.forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; }); svgStr += `  </g>\n`; }
@@ -446,23 +439,8 @@ function render() {
 
     ctxOut.restore(); 
 
-    const debugOpacity = parseInt(document.getElementById('debugOpacityInput').value) / 100;
-    
-    if (document.getElementById('showInitialHex')?.checked) {
-        ctxOut.strokeStyle = `rgba(255, 165, 0, ${debugOpacity})`; 
-        ctxOut.lineWidth = 1;
-        const p2d = new Path2D(hexPathD);
-        ctxOut.stroke(p2d); 
-    }
-
-    if (document.getElementById('showRectGrid').checked) {
-        ctxOut.strokeStyle = `rgba(0, 0, 0, ${debugOpacity})`; ctxOut.lineWidth = 1; ctxOut.beginPath();
-        for(let u = -2; u <= cols * 2 + 4; u++) { ctxOut.moveTo(u * hexW, -2 * hexH); ctxOut.lineTo(u * hexW, cvsH + 2 * hexH); }
-        for(let v = -2; v <= rows * 3 + 4; v++) { ctxOut.moveTo(-2 * hexW, v * hexH); ctxOut.lineTo(cvsW + 2 * hexW, v * hexH); }
-        ctxOut.stroke();
-    }
-
-    if (document.getElementById('showSelectors').checked) {
+    if (document.getElementById('showSelectors')?.checked) {
+        const debugOpacity = parseInt(document.getElementById('debugOpacityInput').value) / 100;
         for (let r = -2; r <= rows + 2; r++) {
             for (let c = -2; c <= cols + 2; c++) {
                 const gridX = (Math.abs(r) % 2 === 0) ? (c * 2 + 1) : (c * 2 + 2); const gridY = r * 3 + 2;
@@ -478,26 +456,9 @@ function render() {
         }
     }
     
-    if (document.getElementById('showHexGrid').checked) {
-        ctxOut.strokeStyle = `rgba(33, 150, 243, ${debugOpacity})`; ctxOut.lineWidth = 1;
-        for (let r = -2; r <= rows + 2; r++) {
-            for (let c = -2; c <= cols + 2; c++) {
-                const gridX = (Math.abs(r) % 2 === 0) ? (c * 2 + 1) : (c * 2 + 2); const gridY = r * 3 + 2;
-                [{ pts: [[gridX,gridY], [gridX-1,gridY-1], [gridX,gridY-2], [gridX+1,gridY-1]] },
-                 { pts: [[gridX,gridY], [gridX,gridY+2], [gridX-1,gridY+1], [gridX-1,gridY-1]] },
-                 { pts: [[gridX,gridY], [gridX+1,gridY-1], [gridX+1,gridY+1], [gridX,gridY+2]] }
-                ].forEach(rhomb => {
-                    ctxOut.beginPath(); ctxOut.moveTo(rhomb.pts[0][0]*hexW, rhomb.pts[0][1]*hexH);
-                    rhomb.pts.slice(1).forEach(p => ctxOut.lineTo(p[0]*hexW, p[1]*hexH));
-                    ctxOut.closePath(); ctxOut.stroke();
-                });
-            }
-        }
-    }
-    
     svgStr += `</svg>`; 
     appState.svgOutput = svgStr;
-} // END OF RENDER FUNCTION
+}
 
 function getExportFilename(extension) {
     const cols = document.getElementById('colsInput').value; 
@@ -520,12 +481,12 @@ function getExportFilename(extension) {
     return `${filename}.${extension}`;
 }
 
-document.getElementById('downloadPngBtn').addEventListener('click', () => {
+document.getElementById('downloadPngBtn')?.addEventListener('click', () => {
     const link = document.createElement('a'); link.download = getExportFilename('png'); 
     link.href = mainCanvas.toDataURL('image/png'); link.click();
 });
 
-document.getElementById('downloadSvgBtn').addEventListener('click', () => {
+document.getElementById('downloadSvgBtn')?.addEventListener('click', () => {
     if (!appState.svgOutput) return;
     const blob = new Blob([appState.svgOutput], {type: 'image/svg+xml;charset=utf-8'});
     const url = URL.createObjectURL(blob); const link = document.createElement('a'); 
@@ -533,8 +494,10 @@ document.getElementById('downloadSvgBtn').addEventListener('click', () => {
 });
 
 initApp();
+
 // ============================================================================
-// 16 СЕРЫХ УЗОРОВ × ТОП-2 ЧЁРНЫХ = 32 ПУТИ (10 СФИРОТ + 22 БУКВЫ)
+// 20 СЕРЫХ УЗОРОВ (10 КОМБО × A,B) -> 32 СФИРОТ (CONTINUOUS / CHECKERED / MIXED)
+// + 4 МАТЕМАТИЧЕСКИХ ФОНА ВНУТРИ SVG + ЗАДЕЛ ПОД ТРАФАРЕТНЫЙ ШАБЛОН
 // ============================================================================
 
 const SEFIROT_SYMBOLS = [
@@ -543,11 +506,11 @@ const SEFIROT_SYMBOLS = [
     "ל", "מ", "נ", "ס", "ע", "פ", "צ", "ק", "ר", "ש", "ת"
 ];
 
-// 8 отобранных комбинаций для Серого слоя (в режимах A и B дают 16 Серых узоров)
-const GRAY_8_COMBOS = ['112', '132', '212', '213', '312', '313', '321', '332'];
+// 10 утверждённых комбинаций Серого слоя (в режимах A и B дают 20 базовых узоров)
+const GRAY_10_COMBOS = ['112', '132', '212', '213', '311', '312', '313', '321', '322', '332'];
 const GRAY_MODES = ['A', 'B'];
 
-// Для Чёрного слоя перебираем абсолютно все 4 режима и все 27 комбинаций (111..333)
+// Для Чёрного слоя перебираем все 4 режима и все 27 комбинаций (111..333)
 const ALL_BLACK_MODES = ['A', 'B', 'C', 'D'];
 const ALL_27_COMBOS = [];
 for (let r = 1; r <= 3; r++) {
@@ -560,37 +523,55 @@ for (let r = 1; r <= 3; r++) {
 
 const RANK_MODE_REV = { 'A': 'i_odd', 'B': 'i_even', 'C': 'odd', 'D': 'even' };
 const BASIC_6_COMBOS = new Set(['123', '132', '213', '231', '312', '321']);
-const FACE_DIAG = ['3', '1', '2'];
 
-// Подбор фона, комплиментарного СЕРОМУ слою (и максимально разведённого с Чёрным)
-function getComplementaryBgForGray(gm, gc, bc) {
-    // Противоположная фаза к Серому слою (для A -> B, для B -> A)
+// --- ЕДИНСТВЕННАЯ УТВЕРЖДЁННАЯ ФОРМУЛА ФОНА: ЗЕРКАЛО (A <-> B) ---
+const BG_FORMULA_TABLES = {
+    Mirror: {
+        '112': '212', '132': '213', '212': '112', '213': '132', '311': '322',
+        '312': '321', '313': '332', '321': '312', '322': '311', '332': '313'
+    }
+};
+
+function getFourBackgroundsForGray(gm, gc) {
     const bgMode = (gm === 'A') ? 'B' : 'A';
-
-    // Все комбинации (без 111/222/333), которые ни на одной грани не совпадают с Серым слоем
-    const candidates = ALL_27_COMBOS.filter(c =>
-        !(c[0] === c[1] && c[1] === c[2]) &&
-        c[0] !== gc[0] && c[1] !== gc[1] && c[2] !== gc[2]
-    );
-
-    const scored = candidates.map(c => {
-        const blackOverlap = (c[0] === bc[0] ? 1 : 0) + (c[1] === bc[1] ? 1 : 0) + (c[2] === bc[2] ? 1 : 0);
-        const uniqueDigits = new Set(c).size; // 3 = все 3 грани разные
-        const diagCount = (c[0] === FACE_DIAG[0] ? 1 : 0) + (c[1] === FACE_DIAG[1] ? 1 : 0) + (c[2] === FACE_DIAG[2] ? 1 : 0);
-        return { combo: c, blackOverlap, uniqueDigits, diagCount };
-    });
-
-    scored.sort((a, b) =>
-        (a.blackOverlap - b.blackOverlap) ||
-        (b.uniqueDigits - a.uniqueDigits) ||
-        (a.diagCount - b.diagCount)
-    );
-
-    const bgCombo = scored[0].combo;
-    return { mode: bgMode, combo: bgCombo, key: `${bgMode}-${bgCombo}`, shortTag: `BG${bgCombo}` };
+    const list = [];
+    let idx = 1;
+    for (const [formulaName, table] of Object.entries(BG_FORMULA_TABLES)) {
+        const bgCombo = table[gc];
+        list.push({
+            index: idx++,
+            formula: formulaName,
+            mode: bgMode,
+            combo: bgCombo,
+            key: `${bgMode}-${bgCombo}`,
+            code: `${bgMode}${bgCombo}`,
+            layerId: `Background_${idx - 1}_${formulaName}_${bgMode}${bgCombo}`
+        });
+    }
+    return { primary: list[0], all: list };
 }
 
-// --- CRC32 и сборка ZIP ---
+// ============================================================================
+// ЗАДЕЛ АРХИТЕКТУРЫ ПОД ШАБЛОН ТРАФАРЕТА (ФЛАПСЫ, МАРКЕРЫ, ТЕХ. НАЗВАНИЯ СЛОЁВ)
+// ============================================================================
+const STENCIL_TEMPLATE_CONFIG = {
+    enabled: false,
+    canvasPreset: 'default',
+    marginTop: 0,
+    marginBottom: 0,
+    marginLeft: 0,
+    marginRight: 0,
+    drawFlaps: false,
+    drawRegMarkers: false,
+    drawTechLabels: false
+};
+
+function buildStencilHardwareSvg(item, cvsW, cvsH) {
+    if (!STENCIL_TEMPLATE_CONFIG.enabled) return '';
+    return `  <g id="Stencil_Hardware_${item.seqNum}"></g>\n`;
+}
+
+// --- CRC32 и сборка ZIP с поддержкой UTF-8 ---
 const CRC_TABLE = new Uint32Array(256).map((_, n) => {
     let c = n;
     for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
@@ -619,7 +600,7 @@ function buildZipBlob(filesList) {
         const lv = new DataView(localHeader.buffer);
         lv.setUint32(0, 0x04034b50, true);
         lv.setUint16(4, 20, true);
-        lv.setUint16(6, 0x0800, true); // UTF-8 flag для корректных букв иврита в именах файлов
+        lv.setUint16(6, 0x0800, true);
         lv.setUint16(8, 0, true);
         lv.setUint32(14, crc, true);
         lv.setUint32(18, size, true);
@@ -634,7 +615,7 @@ function buildZipBlob(filesList) {
         cv.setUint32(0, 0x02014b50, true);
         cv.setUint16(4, 20, true);
         cv.setUint16(6, 20, true);
-        cv.setUint16(8, 0x0800, true); // UTF-8 flag
+        cv.setUint16(8, 0x0800, true);
         cv.setUint32(16, crc, true);
         cv.setUint32(20, size, true);
         cv.setUint32(24, size, true);
@@ -719,7 +700,8 @@ function grayFloatToDataURL(grayArr, w, h) {
     return cvs.toDataURL('image/png');
 }
 
-function computeSimilarity(refArr, candArr, maskArr, metricType) {
+// Утверждённый гибридный алгоритм оценки (Structure + Tone)
+function computeSimilarity(refArr, candArr, maskArr) {
     let n = 0, sumR = 0, sumC = 0, sqDiffSum = 0;
     for (let i = 0; i < refArr.length; i++) {
         if (!maskArr[i]) continue;
@@ -746,13 +728,11 @@ function computeSimilarity(refArr, candArr, maskArr, metricType) {
     const rmse = Math.sqrt(sqDiffSum / n);
     const tonalMatch = Math.max(0, 1 - rmse / 255);
 
-    if (metricType === 'pearson') return pearson * 100;
-    if (metricType === 'mse') return tonalMatch * 100;
     return (0.65 * pearson + 0.35 * tonalMatch) * 100;
 }
 
-// --- Генерация полигонов для одного состояния ---
-function buildMonoPolygonsData(prefix, modeLetter, combo, isNegative = false) {
+// --- Генерация полигонов для одного состояния (с поддержкой isInverse для Checkered и isNegative для Continuous) ---
+function buildMonoPolygonsData(prefix, modeLetter, combo, options = { isInverse: false, isNegative: false }) {
     const mode = RANK_MODE_REV[modeLetter] || modeLetter;
     const cols = parseInt(document.getElementById('colsInput').value);
     const rows = parseInt(document.getElementById('rowsInput').value);
@@ -815,10 +795,16 @@ function buildMonoPolygonsData(prefix, modeLetter, combo, isNegative = false) {
                             let rgbBot = getRGB(imgData, cvsW, cvsH, px, py, dir.x, dir.y, -norm.x, -norm.y, stepLen, baseRadius);
                             let brTop = (rgbTop.r*0.299 + rgbTop.g*0.587 + rgbTop.b*0.114) / 255;
                             let brBot = (rgbBot.r*0.299 + rgbBot.g*0.587 + rgbBot.b*0.114) / 255;
-                            if (isNegative) { brTop = 1.0 - brTop; brBot = 1.0 - brBot; }
 
-                            const thickTop = (minThick + (1.0 - brTop) * (maxThick - minThick)) * baseRadius;
-                            const thickBot = (minThick + (1.0 - brBot) * (maxThick - minThick)) * baseRadius;
+                            if (options.isNegative) { brTop = 1.0 - brTop; brBot = 1.0 - brBot; }
+                            let thickTop, thickBot;
+                            if (options.isInverse) {
+                                thickTop = Math.max(0, 1.0 - (minThick + brTop * (maxThick - minThick))) * baseRadius;
+                                thickBot = Math.max(0, 1.0 - (minThick + brBot * (maxThick - minThick))) * baseRadius;
+                            } else {
+                                thickTop = (minThick + (1.0 - brTop) * (maxThick - minThick)) * baseRadius;
+                                thickBot = (minThick + (1.0 - brBot) * (maxThick - minThick)) * baseRadius;
+                            }
                             cPtsTop.push({ x: px + norm.x * thickTop, y: py + norm.y * thickTop });
                             cPtsBot.push({ x: px - norm.x * thickBot, y: py - norm.y * thickBot });
                         }
@@ -846,8 +832,9 @@ function polysArrayToPath2D(polys) {
     return path;
 }
 
-function polysArrayToSvgGroup(groupId, fillHex, polys, indent = '  ') {
-    let s = `${indent}<g id="${groupId}" fill="${fillHex}">\n`;
+function polysArrayToSvgGroup(groupId, fillHex, polys, indent = '  ', hidden = false) {
+    const styleAttr = hidden ? ' style="display:none"' : '';
+    let s = `${indent}<g id="${groupId}" fill="${fillHex}"${styleAttr}>\n`;
     for (let i = 0; i < polys.length; i++) {
         s += `${indent}  <polygon points="${polys[i].map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`;
     }
@@ -855,7 +842,29 @@ function polysArrayToSvgGroup(groupId, fillHex, polys, indent = '  ') {
     return s;
 }
 
-// --- Стили и DOM галереи (строго 32 карточки) ---
+// Змейка-раскладка от краёв к центру: [0, N-1, 1, N-2, 2, N-3, ...]
+function foldSpreadArray(sortedArr, startFromBest = true) {
+    const res = [];
+    let left = 0, right = sortedArr.length - 1;
+    while (left <= right) {
+        if (left === right) {
+            res.push(sortedArr[left]);
+            break;
+        }
+        if (startFromBest) {
+            res.push(sortedArr[left]);
+            res.push(sortedArr[right]);
+        } else {
+            res.push(sortedArr[right]);
+            res.push(sortedArr[left]);
+        }
+        left++;
+        right--;
+    }
+    return res;
+}
+
+// --- Стили и DOM галереи (32 карточки, без лишней текстовой информации о фонах) ---
 const galleryStyle = document.createElement('style');
 galleryStyle.textContent = `
     #rankGalleryContainer {
@@ -880,7 +889,7 @@ galleryStyle.textContent = `
     }
     .rank-btn.active { background: #4CAF50; border-color: #4CAF50; font-weight: bold; }
     .rank-grid {
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
         gap: 12px;
     }
     .rank-card {
@@ -889,14 +898,13 @@ galleryStyle.textContent = `
     }
     .rank-card:hover { transform: translateY(-2px); border-color: #4CAF50; }
     .rank-card img {
-        width: auto; height: 92px; max-width: 100%; background: #fff;
+        width: auto; height: 96px; max-width: 100%; background: #fff;
         border-radius: 3px; margin-bottom: 6px; object-fit: contain;
     }
     .pixelated-img { image-rendering: pixelated; }
-    .rank-badge { display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px; color: #aaa; }
+    .rank-badge { display: flex; justify-content: space-between; font-size: 0.72rem; margin-bottom: 4px; color: #aaa; }
     .rank-score { color: #4CAF50; font-weight: bold; }
-    .rank-title { font-size: 0.84rem; font-weight: bold; color: #fff; margin-bottom: 4px; direction: ltr; }
-    .rank-sub { font-size: 0.72rem; color: #bbb; background: #1b1b1b; padding: 3px 4px; border-radius: 3px; }
+    .rank-title { font-size: 0.86rem; font-weight: bold; color: #fff; direction: ltr; }
 `;
 document.head.appendChild(galleryStyle);
 
@@ -922,6 +930,18 @@ if (rankBlurInput && valRankBlur) {
     valRankBlur.addEventListener('change', (e) => { rankBlurInput.value = e.target.value; });
 }
 
+// Обновление подписи кнопки при смене режима серого (Continuous / Checkered / Mixed)
+const rankGrayStyleSelect = document.getElementById('rankGrayStyleSelect');
+rankGrayStyleSelect?.addEventListener('change', () => {
+    const btn = document.getElementById('runAutoRankBtn');
+    if (!btn) return;
+    if (rankGrayStyleSelect.value === 'mixed') {
+        btn.textContent = '🔍 Просчитать 20+20 → Отобрать 32 (Mixed)';
+    } else {
+        btn.textContent = '🔍 Просчитать 40 → Отобрать 32';
+    }
+});
+
 function setGalleryVisibility(showGallery) {
     const toggleBtn = document.getElementById('toggleGalleryViewBtn');
     if (toggleBtn) toggleBtn.style.display = 'block';
@@ -945,6 +965,7 @@ function ensureItemThumbnails(item) {
     const showOnWhite = document.getElementById('grayOnWhite').checked;
     const showOnBlack = document.getElementById('grayOnBlack').checked;
     const isCropped = document.getElementById('cropToHex')?.checked;
+    const styleMode = item.grayRenderMode;
 
     const crispCvs = document.createElement('canvas');
     crispCvs.width = crispW; crispCvs.height = crispH;
@@ -972,12 +993,24 @@ function ensureItemThumbnails(item) {
         ctxCrispTemp.save();
         ctxCrispTemp.scale(scaleCrisp, scaleCrisp);
         if (isCropped && cachedHexClipPath) ctxCrispTemp.clip(cachedHexClipPath);
-        ctxCrispTemp.globalCompositeOperation = 'source-over';
-        ctxCrispTemp.fillStyle = '#000000';
-        ctxCrispTemp.fill(bPath);
-        ctxCrispTemp.globalCompositeOperation = 'source-in';
-        ctxCrispTemp.fillStyle = '#7f7f7f';
-        ctxCrispTemp.fill(gPath.neg);
+
+        if (styleMode === 'checkered') {
+            ctxCrispTemp.globalCompositeOperation = 'source-over';
+            ctxCrispTemp.fillStyle = '#000000';
+            ctxCrispTemp.fill(bPath);
+            ctxCrispTemp.globalCompositeOperation = 'destination-out';
+            ctxCrispTemp.fill(gPath.gaps);
+            ctxCrispTemp.globalCompositeOperation = 'source-in';
+            ctxCrispTemp.fillStyle = '#7f7f7f';
+            ctxCrispTemp.fillRect(0, 0, cvsW, cvsH);
+        } else {
+            ctxCrispTemp.globalCompositeOperation = 'source-over';
+            ctxCrispTemp.fillStyle = '#000000';
+            ctxCrispTemp.fill(bPath);
+            ctxCrispTemp.globalCompositeOperation = 'source-in';
+            ctxCrispTemp.fillStyle = '#7f7f7f';
+            ctxCrispTemp.fill(gPath.neg);
+        }
         ctxCrispTemp.restore();
         ctxCrisp.drawImage(crispTempCvs, 0, 0);
     }
@@ -1012,6 +1045,10 @@ function renderGalleryDOM() {
 
     const imgClass = galleryViewState.showBlurred ? 'pixelated-img' : '';
     const refImgSrc = galleryViewState.showBlurred ? lastRefThumbs.blurredUrl : lastRefThumbs.crispUrl;
+    const modeSel = document.getElementById('rankGrayStyleSelect')?.value || 'continuous';
+    const subHeader = (modeSel === 'mixed')
+        ? 'Mixed: 16 CHK + 16 CNT (чередование через 1)'
+        : `${modeSel === 'checkered' ? 'Checkered' : 'Continuous'}: 32 из 40 (1, 32, 2, 31...)`;
 
     galleryEl.innerHTML = `
         <div class="rank-toolbar">
@@ -1019,7 +1056,7 @@ function renderGalleryDOM() {
                 <img src="${refImgSrc}" class="${imgClass}">
                 <div>
                     <div style="font-weight:bold; font-size:0.85rem; color:#4CAF50;">Эталон (${lastRefThumbs.w}×${lastRefThumbs.h} px)</div>
-                    <div style="font-size:0.75rem; color:#aaa;">32 Пути (16 Серых × Топ-2 Чёрных)</div>
+                    <div style="font-size:0.75rem; color:#aaa;">${subHeader}</div>
                 </div>
             </div>
             <div class="rank-controls">
@@ -1030,7 +1067,7 @@ function renderGalleryDOM() {
                     👁 33px + Гаусс
                 </button>
                 <button class="rank-btn" id="btnToolbarExportZip" style="background:#9C27B0; border-color:#9C27B0; font-weight:bold;">
-                    📦 Скачать 32 SVG (+Фон) в ZIP
+                    📦 Скачать 32 SVG (+4 фона) в ZIP
                 </button>
                 <button class="rank-btn" id="btnBackToCanvas" style="background:#2196F3; border-color:#2196F3;">
                     🖼 На холст
@@ -1039,14 +1076,13 @@ function renderGalleryDOM() {
         </div>
         <div class="rank-grid">
             ${selected32List.map((item) => `
-                <div class="rank-card" data-bm="${item.bm}" data-bc="${item.bc}" data-gm="${item.gm}" data-gc="${item.gc}">
+                <div class="rank-card" data-bm="${item.bm}" data-bc="${item.bc}" data-gm="${item.gm}" data-gc="${item.gc}" data-gstyle="${item.grayRenderMode}">
                     <div class="rank-badge">
-                        <span>Узор ${item.patternNum} (Топ-${item.topNum})</span>
+                        <span>${item.badgeLabel}</span>
                         <span class="rank-score">${item.score.toFixed(1)}%</span>
                     </div>
                     <img src="${galleryViewState.showBlurred ? item.blurredUrl : item.crispUrl}" class="${imgClass}">
                     <div class="rank-title">${item.displayName}</div>
-                    <div class="rank-sub">Фон (к ${item.gm}${item.gc}): <b>${item.bg.mode}${item.bg.combo}</b></div>
                 </div>
             `).join('')}
         </div>
@@ -1061,14 +1097,68 @@ function renderGalleryDOM() {
         card.addEventListener('click', () => {
             applyComboToUI('black', card.dataset.bm, card.dataset.bc);
             applyComboToUI('gray', card.dataset.gm, card.dataset.gc);
-            document.getElementById('grayRenderMode').value = 'continuous';
+            document.getElementById('grayRenderMode').value = card.dataset.gstyle;
             setGalleryVisibility(false);
             render();
         });
     });
 }
 
-// --- Расчёт 16 Серых узоров × все 108 Чёрных и формирование зигзаг-списка из 32 ---
+// Вспомогательная функция оценки одного наложения (bPath + gPath) на 33px сенсоре
+function evaluateCandidateScore(ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, gPath, styleMode, thumbW, thumbH, scale33, cvsW, cvsH, isCropped, showOnWhite, showOnBlack, sigma, refBlurredGray, activeMask) {
+    ctxSensor.globalCompositeOperation = 'source-over';
+    ctxSensor.fillStyle = '#ffffff';
+    ctxSensor.fillRect(0, 0, thumbW, thumbH);
+    ctxSensor.save();
+    ctxSensor.scale(scale33, scale33);
+    if (isCropped) ctxSensor.clip(cachedHexClipPath);
+
+    if (showOnWhite) {
+        ctxSensor.fillStyle = '#7f7f7f';
+        ctxSensor.fill(gPath.orig);
+    }
+    ctxSensor.fillStyle = '#000000';
+    ctxSensor.fill(bPath);
+    ctxSensor.restore();
+
+    if (showOnBlack) {
+        ctxSensorTemp.clearRect(0, 0, thumbW, thumbH);
+        ctxSensorTemp.save();
+        ctxSensorTemp.scale(scale33, scale33);
+        if (isCropped) ctxSensorTemp.clip(cachedHexClipPath);
+
+        if (styleMode === 'checkered') {
+            ctxSensorTemp.globalCompositeOperation = 'source-over';
+            ctxSensorTemp.fillStyle = '#000000';
+            ctxSensorTemp.fill(bPath);
+            ctxSensorTemp.globalCompositeOperation = 'destination-out';
+            ctxSensorTemp.fill(gPath.gaps);
+            ctxSensorTemp.globalCompositeOperation = 'source-in';
+            ctxSensorTemp.fillStyle = '#7f7f7f';
+            ctxSensorTemp.fillRect(0, 0, cvsW, cvsH);
+        } else {
+            ctxSensorTemp.globalCompositeOperation = 'source-over';
+            ctxSensorTemp.fillStyle = '#000000';
+            ctxSensorTemp.fill(bPath);
+            ctxSensorTemp.globalCompositeOperation = 'source-in';
+            ctxSensorTemp.fillStyle = '#7f7f7f';
+            ctxSensorTemp.fill(gPath.neg);
+        }
+        ctxSensorTemp.restore();
+
+        ctxSensor.globalCompositeOperation = 'source-over';
+        ctxSensor.drawImage(sensorTempCvs, 0, 0);
+    }
+
+    const sData = ctxSensor.getImageData(0, 0, thumbW, thumbH).data;
+    const rawGray = new Float32Array(thumbW * thumbH);
+    for (let k = 0; k < rawGray.length; k++) rawGray[k] = sData[k * 4];
+    const blurredGray = applyGaussianBlurGray(rawGray, thumbW, thumbH, sigma);
+
+    return computeSimilarity(refBlurredGray, blurredGray, activeMask);
+}
+
+// --- Главный расчёт 32 Сфирот (поддерживает Continuous, Checkered и Mixed) ---
 async function compute32SefirotPatterns() {
     if (!sourceImage.src || !mainCanvas.width) return;
     const btn = document.getElementById('runAutoRankBtn');
@@ -1078,7 +1168,7 @@ async function compute32SefirotPatterns() {
     const rows = parseInt(document.getElementById('rowsInput').value);
     const cvsW = mainCanvas.width, cvsH = mainCanvas.height;
     const sigma = parseFloat(document.getElementById('val-rankBlur').value) || 0;
-    const metricType = document.getElementById('rankMetricSelect').value;
+    const rankStyleChoice = document.getElementById('rankGrayStyleSelect')?.value || 'continuous';
 
     const minSide = Math.min(cvsW, cvsH);
     const scale33 = 33 / minSide;
@@ -1149,15 +1239,13 @@ async function compute32SefirotPatterns() {
 
     lastRefThumbs = { blurredUrl: refBlurredUrl, crispUrl: refCrispUrl, w: thumbW, h: thumbH };
 
-    // 1. Формируем 16 Серых состояний (Узор 1 .. Узор 16)
     const grayStates = [];
     for (const gm of GRAY_MODES) {
-        for (const gc of GRAY_8_COMBOS) {
+        for (const gc of GRAY_10_COMBOS) {
             grayStates.push({ mLetter: gm, combo: gc, key: `${gm}-${gc}` });
         }
     }
 
-    // 2. Формируем все 108 Чёрных состояний (4 режима A,B,C,D × 27 комбинаций 111..333)
     const blackStates = [];
     for (const bm of ALL_BLACK_MODES) {
         for (const bc of ALL_27_COMBOS) {
@@ -1170,132 +1258,195 @@ async function compute32SefirotPatterns() {
     cachedBlackPaths.clear();
     cachedGrayPaths.clear();
 
-    // Предрасчёт 16 Серых узоров
+    const needChk = (rankStyleChoice === 'checkered' || rankStyleChoice === 'mixed');
+    const needCnt = (rankStyleChoice === 'continuous' || rankStyleChoice === 'mixed');
+
+    // Предрасчёт 20 Серых баз (для Mixed считаем и gaps для Checkered, и neg для Continuous)
     for (let i = 0; i < grayStates.length; i++) {
         const gs = grayStates[i];
-        if (btn) btn.textContent = `⏳ Серые узоры: ${i + 1} / 16...`;
+        if (btn) btn.textContent = `⏳ Серые базы: ${i + 1} / 20...`;
         await new Promise(r => setTimeout(r, 0));
-        const gOrig = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, false);
-        const gNeg = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, true);
-        cachedGrayPolys.set(gs.key, { orig: gOrig, neg: gNeg });
-        cachedGrayPaths.set(gs.key, { orig: polysArrayToPath2D(gOrig), neg: polysArrayToPath2D(gNeg) });
+
+        const gOrig = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: false, isNegative: false });
+        const gGaps = needChk ? buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: true, isNegative: false }) : [];
+        const gNeg  = needCnt ? buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: false, isNegative: true }) : [];
+
+        cachedGrayPolys.set(gs.key, { orig: gOrig, gaps: gGaps, neg: gNeg });
+        cachedGrayPaths.set(gs.key, {
+            orig: polysArrayToPath2D(gOrig),
+            gaps: needChk ? polysArrayToPath2D(gGaps) : null,
+            neg:  needCnt ? polysArrayToPath2D(gNeg) : null
+        });
     }
 
-    // Предрасчёт всех 108 Чёрных вариантов
     for (let i = 0; i < blackStates.length; i++) {
         const bs = blackStates[i];
         if (i % 12 === 0) {
             if (btn) btn.textContent = `⏳ Чёрные варианты: ${i + 1} / 108...`;
             await new Promise(r => setTimeout(r, 0));
         }
-        const bPolys = buildMonoPolygonsData('black', bs.mLetter, bs.combo, false);
+        const bPolys = buildMonoPolygonsData('black', bs.mLetter, bs.combo, { isInverse: false, isNegative: false });
         cachedBlackPolys.set(bs.key, bPolys);
         cachedBlackPaths.set(bs.key, polysArrayToPath2D(bPolys));
     }
 
-    // 3. Под каждый из 16 Серых узоров перебираем все Чёрные и оставляем Топ-2
-    const top2PerGray = []; // массив из 16 элементов: [ [top1, top2], ... ]
     const showOnWhite = document.getElementById('grayOnWhite').checked;
     const showOnBlack = document.getElementById('grayOnBlack').checked;
     const isCropped = document.getElementById('cropToHex')?.checked;
 
-    for (let pIdx = 0; pIdx < grayStates.length; pIdx++) {
-        const gState = grayStates[pIdx];
-        const gPath = cachedGrayPaths.get(gState.key);
-        const candidatesForThisGray = [];
+    let spread32 = [];
 
-        if (btn) btn.textContent = `🔍 Отбор Топ-2 для Серого узора ${pIdx + 1} / 16...`;
-        await new Promise(r => setTimeout(r, 0));
+    if (rankStyleChoice === 'mixed') {
+        // РЕЖИМ MIXED:
+        // По каждому из 20 серых узоров берём Топ-1 для Checkered (20 шт.) и Топ-1 для Continuous (20 шт.)
+        const pool20Chk = [];
+        const pool20Cnt = [];
 
-        for (const bState of blackStates) {
-            if (bState.key === gState.key) continue;
-            const bPath = cachedBlackPaths.get(bState.key);
+        for (let pIdx = 0; pIdx < grayStates.length; pIdx++) {
+            const gState = grayStates[pIdx];
+            const gPath = cachedGrayPaths.get(gState.key);
+            const candsChk = [];
+            const candsCnt = [];
 
-            ctxSensor.globalCompositeOperation = 'source-over';
-            ctxSensor.fillStyle = '#ffffff';
-            ctxSensor.fillRect(0, 0, thumbW, thumbH);
-            ctxSensor.save();
-            ctxSensor.scale(scale33, scale33);
-            if (isCropped) ctxSensor.clip(cachedHexClipPath);
+            if (btn) btn.textContent = `🔍 Mixed Топ-1 (CHK+CNT) для Серого ${pIdx + 1} / 20...`;
+            await new Promise(r => setTimeout(r, 0));
 
-            if (showOnWhite) {
-                ctxSensor.fillStyle = '#7f7f7f';
-                ctxSensor.fill(gPath.orig);
+            for (const bState of blackStates) {
+                if (bState.combo === gState.combo) continue;
+                const bPath = cachedBlackPaths.get(bState.key);
+
+                const scoreChk = evaluateCandidateScore(
+                    ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, gPath, 'checkered',
+                    thumbW, thumbH, scale33, cvsW, cvsH, isCropped, showOnWhite, showOnBlack,
+                    sigma, refBlurredGray, activeMask
+                );
+                candsChk.push({
+                    grayPatternNum: pIdx + 1,
+                    grayRenderMode: 'checkered',
+                    bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
+                    gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
+                    bgs: getFourBackgroundsForGray(gState.mLetter, gState.combo),
+                    score: scoreChk,
+                    crispUrl: null, blurredUrl: null
+                });
+
+                const scoreCnt = evaluateCandidateScore(
+                    ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, gPath, 'continuous',
+                    thumbW, thumbH, scale33, cvsW, cvsH, isCropped, showOnWhite, showOnBlack,
+                    sigma, refBlurredGray, activeMask
+                );
+                candsCnt.push({
+                    grayPatternNum: pIdx + 1,
+                    grayRenderMode: 'continuous',
+                    bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
+                    gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
+                    bgs: getFourBackgroundsForGray(gState.mLetter, gState.combo),
+                    score: scoreCnt,
+                    crispUrl: null, blurredUrl: null
+                });
             }
-            ctxSensor.fillStyle = '#000000';
-            ctxSensor.fill(bPath);
-            ctxSensor.restore();
 
-            if (showOnBlack) {
-                ctxSensorTemp.clearRect(0, 0, thumbW, thumbH);
-                ctxSensorTemp.save();
-                ctxSensorTemp.scale(scale33, scale33);
-                if (isCropped) ctxSensorTemp.clip(cachedHexClipPath);
-                ctxSensorTemp.globalCompositeOperation = 'source-over';
-                ctxSensorTemp.fillStyle = '#000000';
-                ctxSensorTemp.fill(bPath);
-                ctxSensorTemp.globalCompositeOperation = 'source-in';
-                ctxSensorTemp.fillStyle = '#7f7f7f';
-                ctxSensorTemp.fill(gPath.neg);
-                ctxSensorTemp.restore();
+            candsChk.sort((a, b) => b.score - a.score);
+            candsCnt.sort((a, b) => b.score - a.score);
 
-                ctxSensor.globalCompositeOperation = 'source-over';
-                ctxSensor.drawImage(sensorTempCvs, 0, 0);
-            }
-
-            const sData = ctxSensor.getImageData(0, 0, thumbW, thumbH).data;
-            const rawGray = new Float32Array(thumbW * thumbH);
-            for (let k = 0; k < rawGray.length; k++) rawGray[k] = sData[k * 4];
-            const blurredGray = applyGaussianBlurGray(rawGray, thumbW, thumbH, sigma);
-
-            const score = computeSimilarity(refBlurredGray, blurredGray, activeMask, metricType);
-
-            candidatesForThisGray.push({
-                patternNum: pIdx + 1,
-                bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
-                gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
-                bg: getComplementaryBgForGray(gState.mLetter, gState.combo, bState.combo),
-                score,
-                crispUrl: null,
-                blurredUrl: null
-            });
+            pool20Chk.push(candsChk[0]); // Только Топ-1 для Шахматки
+            pool20Cnt.push(candsCnt[0]); // Только Топ-1 для Продолжительного
         }
 
-        candidatesForThisGray.sort((a, b) => b.score - a.score);
-        const top1 = { ...candidatesForThisGray[0], topNum: 1 };
-        const top2 = { ...candidatesForThisGray[1], topNum: 2 };
-        top2PerGray.push([top1, top2]);
+        // Отсеиваем по 4 худших в каждой группе (оставляем по 16 лучших)
+        pool20Chk.sort((a, b) => b.score - a.score);
+        pool20Cnt.sort((a, b) => b.score - a.score);
+
+        const best16Chk = pool20Chk.slice(0, 16).map((item, idx) => ({
+            ...item,
+            qualityRank: idx + 1,
+            badgeLabel: `CHK #${idx + 1}/16`
+        }));
+        const best16Cnt = pool20Cnt.slice(0, 16).map((item, idx) => ({
+            ...item,
+            qualityRank: idx + 1,
+            badgeLabel: `CNT #${idx + 1}/16`
+        }));
+
+        // Равномерно размазываем качество в обеих шестнадцатках в противофазе:
+        // spreadChk: #1, #16, #2, #15, #3, #14, ..., #8, #9
+        // spreadCnt: #16, #1, #15, #2, #14, #3, ..., #9, #8
+        const spreadChk = foldSpreadArray(best16Chk, true);
+        const spreadCnt = foldSpreadArray(best16Cnt, false);
+
+        // Чередуем строго через один: Шахматка - Продолжительный - Шахматка - Продолжительный...
+        for (let i = 0; i < 16; i++) {
+            spread32.push(spreadChk[i]);
+            spread32.push(spreadCnt[i]);
+        }
+    } else {
+        // ОДИНОЧНЫЙ РЕЖИМ (Checkered ИЛИ Continuous):
+        // По каждому из 20 серых узоров берём Топ-2 -> 40 вариантов -> откидываем 8 худших -> 32
+        const pool40 = [];
+        const styleTag = (rankStyleChoice === 'checkered') ? 'CHK' : 'CNT';
+
+        for (let pIdx = 0; pIdx < grayStates.length; pIdx++) {
+            const gState = grayStates[pIdx];
+            const gPath = cachedGrayPaths.get(gState.key);
+            const candidatesForThisGray = [];
+
+            if (btn) btn.textContent = `🔍 Отбор Топ-2 (${styleTag}) для Серого ${pIdx + 1} / 20...`;
+            await new Promise(r => setTimeout(r, 0));
+
+            for (const bState of blackStates) {
+                if (bState.combo === gState.combo) continue;
+                const bPath = cachedBlackPaths.get(bState.key);
+
+                const score = evaluateCandidateScore(
+                    ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, gPath, rankStyleChoice,
+                    thumbW, thumbH, scale33, cvsW, cvsH, isCropped, showOnWhite, showOnBlack,
+                    sigma, refBlurredGray, activeMask
+                );
+
+                candidatesForThisGray.push({
+                    grayPatternNum: pIdx + 1,
+                    grayRenderMode: rankStyleChoice,
+                    bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
+                    gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
+                    bgs: getFourBackgroundsForGray(gState.mLetter, gState.combo),
+                    score,
+                    crispUrl: null, blurredUrl: null
+                });
+            }
+
+            candidatesForThisGray.sort((a, b) => b.score - a.score);
+            pool40.push(candidatesForThisGray[0]);
+            pool40.push(candidatesForThisGray[1]);
+        }
+
+        pool40.sort((a, b) => b.score - a.score);
+        const best32Sorted = pool40.slice(0, 32).map((item, idx) => ({
+            ...item,
+            qualityRank: idx + 1,
+            badgeLabel: `${styleTag} #${idx + 1}/32`
+        }));
+
+        // Равномерно размазываем 32 узора по всему ряду (1, 32, 2, 31, ..., 16, 17)
+        spread32 = foldSpreadArray(best32Sorted, true);
     }
 
-    // 4. Выстраиваем 32 узора в точном зигзаг-порядке:
-    // Прямой ход (1..16): Топ-1 Узор 1, Топ-2 Узор 2, Топ-1 Узор 3, Топ-2 Узор 4, ..., Топ-2 Узор 16
-    // Обратный ход (16..1): Топ-1 Узор 16, Топ-2 Узор 15, ..., Топ-1 Узор 2, Топ-2 Узор 1
-    const ordered32 = [];
-    for (let i = 0; i < 16; i++) {
-        const pickIdx = (i % 2 === 0) ? 0 : 1; // чётный индекс массива (Узор 1, 3, 5...) -> Топ-1 (0), нечётный (Узор 2, 4, 6...) -> Топ-2 (1)
-        ordered32.push(top2PerGray[i][pickIdx]);
-    }
-    for (let i = 15; i >= 0; i--) {
-        const pickIdx = (i % 2 === 1) ? 0 : 1; // для Узора 16 (i=15) -> Топ-1 (0), для Узора 15 (i=14) -> Топ-2 (1), ..., для Узора 1 (i=0) -> Топ-2 (1)
-        ordered32.push(top2PerGray[i][pickIdx]);
-    }
-
-    // Присваиваем номера 1..32, символы Сфирот/Букв и формируем итоговое имя:
-    // "1 СООТВЕТСТВУЮЩАЯ_БУКВА_СФЕРОТ A### B### BG###"
-    ordered32.forEach((item, idx) => {
+    // Присваиваем номера 1..32, буквы Сфирот и чистые имена без упоминания фона: "1 א' A### B###"
+    spread32.forEach((item, idx) => {
         const seqNum = idx + 1;
         const symbol = SEFIROT_SYMBOLS[idx];
         item.seqNum = seqNum;
         item.symbol = symbol;
-        item.displayName = `${seqNum} ${symbol} ${item.bm}${item.bc} ${item.gm}${item.gc} ${item.bg.shortTag}`;
-        item.fileName = `${item.displayName}.svg`;
+        item.displayName = `${seqNum} ${symbol} ${item.bm}${item.bc} ${item.gm}${item.gc}`;
+        item.fileName = `${item.displayName} ${item.bgs.primary.code}.svg`;
     });
 
-    selected32List = ordered32;
+    selected32List = spread32;
 
     if (btn) {
         btn.disabled = false;
-        btn.textContent = '🔍 Пересчитать 32 узора';
+        btn.textContent = (rankStyleChoice === 'mixed')
+            ? '🔍 Пересчитать 20+20 → 32 (Mixed)'
+            : '🔍 Пересчитать 40 → 32';
     }
 }
 
@@ -1305,7 +1456,7 @@ document.getElementById('runAutoRankBtn')?.addEventListener('click', async () =>
     renderGalleryDOM();
 });
 
-// --- ЭКСПОРТ 32 SVG С КОМПЛИМЕНТАРНЫМ СЕРОМУ СЛОЮ ФОНОМ В ZIP ---
+// --- ЭКСПОРТ 32 SVG С 4 МАТЕМАТИЧЕСКИМИ ФОНАМИ ВНУТРИ КАЖДОГО ФАЙЛА ---
 async function export32SvgZip() {
     const expBtn = document.getElementById('exportTopSvgZipBtn');
     const toolbarBtn = document.getElementById('btnToolbarExportZip');
@@ -1351,21 +1502,32 @@ async function export32SvgZip() {
 
         const blackPolys = cachedBlackPolys.get(item.bKey);
         const grayPolys = cachedGrayPolys.get(item.gKey);
-        const bgPolys = cachedBlackPolys.get(item.bg.key);
+        const modeTag = (item.grayRenderMode === 'checkered') ? 'CHK' : 'CNT';
 
         let svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cvsW} ${cvsH}">\n`;
 
-        // 1. Слой Фона (чисто чёрный, комплиментарный Серому слою)
-        svgStr += polysArrayToSvgGroup(`Background_${item.bg.mode}${item.bg.combo}`, '#000000', bgPolys, '  ');
+        svgStr += buildStencilHardwareSvg(item, cvsW, cvsH);
 
-        // 2. Группа Объекта
-        svgStr += `  <g id="Object_${item.bm}${item.bc}_${item.gm}${item.gc}_CNT">\n`;
+        // Вкладываем 4 математических фона (первый виден, остальные 3 скрыты до включения в Illustrator)
+        for (let bIdx = 0; bIdx < item.bgs.all.length; bIdx++) {
+            const bgInfo = item.bgs.all[bIdx];
+            const bgPolys = cachedBlackPolys.get(bgInfo.key);
+            svgStr += polysArrayToSvgGroup(bgInfo.layerId, '#000000', bgPolys, '  ', false);
+        }
+
+        // Группа Объекта (с учётом стиля этой конкретной карточки: Checkered или Continuous)
+        svgStr += `  <g id="Object_${item.bm}${item.bc}_${item.gm}${item.gc}_${modeTag}">\n`;
         if (isCropped) {
             svgStr += polysArrayToSvgGroup('Layer_Crop_Hexagons', '#FFFFFF', hexPolys, '    ');
         }
-        svgStr += polysArrayToSvgGroup('Layer_Gray_Original', grayColor, grayPolys.orig, '    ');
-        svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '    ');
-        svgStr += polysArrayToSvgGroup('Layer_Gray_Negative', grayColor, grayPolys.neg, '    ');
+        if (item.grayRenderMode === 'checkered') {
+            svgStr += polysArrayToSvgGroup('Layer_Gray', grayColor, grayPolys.orig, '    ');
+            svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '    ');
+        } else {
+            svgStr += polysArrayToSvgGroup('Layer_Gray_Original', grayColor, grayPolys.orig, '    ');
+            svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '    ');
+            svgStr += polysArrayToSvgGroup('Layer_Gray_Negative', grayColor, grayPolys.neg, '    ');
+        }
         svgStr += `  </g>\n`;
 
         svgStr += `</svg>`;
@@ -1383,11 +1545,11 @@ async function export32SvgZip() {
 
     if (expBtn) {
         expBtn.disabled = false;
-        expBtn.textContent = '📦 Скачать 32 SVG (+Фон) в ZIP';
+        expBtn.textContent = '📦 Скачать 32 SVG (+4 фона) в ZIP';
     }
     if (toolbarBtn) {
         toolbarBtn.disabled = false;
-        toolbarBtn.textContent = '📦 Скачать 32 SVG (+Фон) в ZIP';
+        toolbarBtn.textContent = '📦 Скачать 32 SVG (+4 фона) в ZIP';
     }
 }
 
