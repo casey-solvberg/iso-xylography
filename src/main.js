@@ -27,7 +27,7 @@ let sourceImage = new Image();
 function initApp() {
     populateCustomCombos();
     updatePaletteUI(0);
-    loadExample('./Mona_Lisa.png');
+    loadExample('./public/Mona_Lisa.jpeg');
 }
 
 // --- DROPDOWN & UPLOAD LOGIC ---
