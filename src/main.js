@@ -151,6 +151,16 @@ function getActivePatterns(prefix) {
     return { 'Top': [getKey(combo[0])], 'Left': [getKey(combo[1])], 'Right': [getKey(combo[2])] };
 }
 
+function polysArrayToSvgGroup(groupId, fillHex, polys, indent = '  ', hidden = false) {
+    const styleAttr = hidden ? ' style="display:none"' : '';
+    let s = `${indent}<g id="${groupId}" fill="${fillHex}"${styleAttr}>\n`;
+    for (let i = 0; i < polys.length; i++) {
+        s += `${indent}  <polygon points="${polys[i].map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`;
+    }
+    s += `${indent}</g>\n`;
+    return s;
+}
+
 // --- RENDER ENGINE ---
 function render() {
     if (!sourceImage.src || !mainCanvas.width) return;
@@ -299,7 +309,7 @@ function render() {
                                     let [hT, sT, lT] = rgbToHsl(rgbTop.r, rgbTop.g, rgbTop.b); hT = ((hT - hueShift) % 360 + 360) % 360; 
                                     let [rT, gT, bT] = hslToRgb(hT, sT, lT); rgbTop = {r: rT, g: gT, b: bT};
                                     let [hB, sB, lB] = rgbToHsl(rgbBot.r, rgbBot.g, rgbBot.b); hB = ((hB - hueShift) % 360 + 360) % 360;
-                                    let [rB, gB, bB] = hslToRgb(hB, sB, lB); rgbBot = {r: rB, g: gB, b: bB};
+                                    let [rB, gB, bB] = hslToRgb(hB, sB, bB); rgbBot = {r: rB, g: gB, b: bB};
                                 }
 
                                 let decompTop = decomposeColor(rgbTop); let decompBot = decomposeColor(rgbBot);
@@ -366,14 +376,36 @@ function render() {
     ctxOut.fillStyle = '#ffffff';
     ctxOut.fillRect(0, 0, cvsW, cvsH); 
 
-    let svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cvsW} ${cvsH}">\n`;
+    // Root layer ID for Adobe Illustrator instead of generic Layer 1
+    const modeMap = { 'i_odd': 'A', 'i_even': 'B', 'odd': 'C', 'even': 'D' };
+    let rootSvgId = 'Layer_Print';
+    if (appState.currentMode === 'mono') {
+        if (document.getElementById('enableBlack').checked) {
+            const bMode = document.querySelector('input[name="black_mode"]:checked').value;
+            let bCombo = document.querySelector('input[name="black_combo"]:checked').value;
+            if (bCombo === 'custom') bCombo = document.getElementById('black_combo_select').value;
+            rootSvgId += `_${modeMap[bMode]}${bCombo}`;
+        }
+        if (document.getElementById('enableGray').checked) {
+            const gMode = document.querySelector('input[name="gray_mode"]:checked').value;
+            let gCombo = document.querySelector('input[name="gray_combo"]:checked').value;
+            if (gCombo === 'custom') gCombo = document.getElementById('gray_combo_select').value;
+            rootSvgId += `_${modeMap[gMode]}${gCombo}`;
+        }
+    } else {
+        rootSvgId += '_Color';
+        if (document.getElementById('enableBlack').checked) {
+            const bMode = document.querySelector('input[name="black_mode"]:checked').value;
+            let bCombo = document.querySelector('input[name="black_combo"]:checked').value;
+            if (bCombo === 'custom') bCombo = document.getElementById('black_combo_select').value;
+            rootSvgId += `_${modeMap[bMode]}${bCombo}`;
+        }
+    }
+
+    let svgStr = `<svg version="1.1" id="${rootSvgId}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cvsW} ${cvsH}">\n`;
     
     if (isCropped) {
-        svgStr += `  <g id="Layer_Crop_Hexagons" fill="#FFFFFF" stroke="none">\n`;
-        hexPolys.forEach(poly => {
-            svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`;
-        });
-        svgStr += `  </g>\n`;
+        svgStr += polysArrayToSvgGroup('Layer_Hexagons', '#FFFFFF', hexPolys, '  ');
     }
 
     // --- RENDER LAYERS ---
@@ -412,13 +444,18 @@ function render() {
             ctxOut.globalCompositeOperation = 'source-over'; ctxOut.drawImage(tempCanvas, 0, 0);
         }
 
+        // Bottom-to-top SVG order -> renders top-to-bottom in Illustrator Layers panel:
+        // Continuous: Layer Black -> Layer Gray Negative -> Layer Black -> Layer Gray -> Layer Black
         if (grayRenderMode === 'checkered') {
-            if (isGrayEnabled) { svgStr += `  <g id="Layer_Gray" fill="${grayColor}">\n`; grayPolysOriginal.forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; }); svgStr += `  </g>\n`; }
-            if (isBlackEnabled) { svgStr += `  <g id="Layer_Black" fill="#000000">\n`; blackPolys.forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; }); svgStr += `  </g>\n`; }
+            if (isBlackEnabled) svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '  ');
+            if (isGrayEnabled) svgStr += polysArrayToSvgGroup('Layer_Gray', grayColor, grayPolysOriginal, '  ');
+            if (isBlackEnabled && isGrayEnabled) svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '  ');
         } else {
-            if (isGrayEnabled) { svgStr += `  <g id="Layer_Gray_Original" fill="${grayColor}">\n`; grayPolysOriginal.forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; }); svgStr += `  </g>\n`; }
-            if (isBlackEnabled) { svgStr += `  <g id="Layer_Black" fill="#000000">\n`; blackPolys.forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; }); svgStr += `  </g>\n`; }
-            if (isGrayEnabled) { svgStr += `  <g id="Layer_Gray_Negative" fill="${grayColor}">\n`; grayPolysNegative.forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; }); svgStr += `  </g>\n`; }
+            if (isBlackEnabled) svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '  ');
+            if (isGrayEnabled) svgStr += polysArrayToSvgGroup('Layer_Gray', grayColor, grayPolysOriginal, '  ');
+            if (isBlackEnabled && isGrayEnabled) svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '  ');
+            if (isGrayEnabled) svgStr += polysArrayToSvgGroup('Layer_Gray_Negative', grayColor, grayPolysNegative, '  ');
+            if (isBlackEnabled && isGrayEnabled) svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '  ');
         }
     } else {
         if (document.getElementById('enableBlack').checked) {
@@ -430,9 +467,7 @@ function render() {
             });
             COLOR_SEQUENCE.forEach(key => {
                 if (colorLayers[key].length === 0) return;
-                svgStr += `  <g id="Layer_${dynamicColorMap[key].id}" fill="${dynamicColorMap[key].hex}">\n`;
-                colorLayers[key].forEach(poly => { svgStr += `    <polygon points="${poly.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`; });
-                svgStr += `  </g>\n`;
+                svgStr += polysArrayToSvgGroup(`Layer_${dynamicColorMap[key].id}`, dynamicColorMap[key].hex, colorLayers[key], '  ');
             });
         }
     }
@@ -464,21 +499,30 @@ function getExportFilename(extension) {
     const cols = document.getElementById('colsInput').value; 
     const rows = document.getElementById('rowsInput').value;
     const modeMap = { 'i_odd': 'A', 'i_even': 'B', 'odd': 'C', 'even': 'D' };
-    let filename = appState.currentMode === 'mono' ? `xylo_${cols}x${rows}` : `xylo_color_${cols}x${rows}_H${document.getElementById('val-hueShift').value}`;
-    
+    const parts = [`${cols}x${rows}`];
+
+    if (appState.currentMode !== 'mono') {
+        parts.push('Color');
+    }
+
     if (document.getElementById('enableBlack').checked) {
         const bMode = document.querySelector('input[name="black_mode"]:checked').value;
         let bCombo = document.querySelector('input[name="black_combo"]:checked').value;
         if (bCombo === 'custom') bCombo = document.getElementById('black_combo_select').value;
-        filename += `_${modeMap[bMode]}-${bCombo}`;
+        parts.push(`${modeMap[bMode]}${bCombo}`);
     }
+
     if (appState.currentMode === 'mono' && document.getElementById('enableGray').checked) {
         const gMode = document.querySelector('input[name="gray_mode"]:checked').value;
         let gCombo = document.querySelector('input[name="gray_combo"]:checked').value;
         if (gCombo === 'custom') gCombo = document.getElementById('gray_combo_select').value;
-        filename += `_${modeMap[gMode]}-${gCombo}_${document.getElementById('grayRenderMode').value === 'checkered' ? 'CHK' : 'CNT'}`;
+        parts.push(`${modeMap[gMode]}${gCombo}`);
+        parts.push(document.getElementById('grayRenderMode').value === 'checkered' ? 'CHK' : 'CNT');
+    } else if (appState.currentMode !== 'mono') {
+        parts.push(`H${document.getElementById('val-hueShift').value}`);
     }
-    return `${filename}.${extension}`;
+
+    return `${parts.join(' ')}.${extension}`;
 }
 
 document.getElementById('downloadPngBtn')?.addEventListener('click', () => {
@@ -496,8 +540,8 @@ document.getElementById('downloadSvgBtn')?.addEventListener('click', () => {
 initApp();
 
 // ============================================================================
-// 20 СЕРЫХ УЗОРОВ (10 КОМБО × A,B) -> 32 СФИРОТ (CONTINUOUS / CHECKERED / MIXED)
-// + 4 МАТЕМАТИЧЕСКИХ ФОНА ВНУТРИ SVG + ЗАДЕЛ ПОД ТРАФАРЕТНЫЙ ШАБЛОН
+// 20 GRAY PATTERNS (10 COMBOS × A,B) -> 32 SEFIROT (CONTINUOUS / CHECKERED / MIXED)
+// + MIRROR BACKGROUND LAYER + STENCIL HARDWARE SCAFFOLDING
 // ============================================================================
 
 const SEFIROT_SYMBOLS = [
@@ -506,11 +550,11 @@ const SEFIROT_SYMBOLS = [
     "ל", "מ", "נ", "ס", "ע", "פ", "צ", "ק", "ר", "ש", "ת"
 ];
 
-// 10 утверждённых комбинаций Серого слоя (в режимах A и B дают 20 базовых узоров)
+// 10 approved Gray layer combinations (modes A & B yield 20 base patterns)
 const GRAY_10_COMBOS = ['112', '132', '212', '213', '311', '312', '313', '321', '322', '332'];
 const GRAY_MODES = ['A', 'B'];
 
-// Для Чёрного слоя перебираем все 4 режима и все 27 комбинаций (111..333)
+// Evaluate all 4 modes and all 27 combinations (111..333) for the Black layer
 const ALL_BLACK_MODES = ['A', 'B', 'C', 'D'];
 const ALL_27_COMBOS = [];
 for (let r = 1; r <= 3; r++) {
@@ -524,7 +568,7 @@ for (let r = 1; r <= 3; r++) {
 const RANK_MODE_REV = { 'A': 'i_odd', 'B': 'i_even', 'C': 'odd', 'D': 'even' };
 const BASIC_6_COMBOS = new Set(['123', '132', '213', '231', '312', '321']);
 
-// --- ЕДИНСТВЕННАЯ УТВЕРЖДЁННАЯ ФОРМУЛА ФОНА: ЗЕРКАЛО (A <-> B) ---
+// --- APPROVED MIRROR BACKGROUND FORMULA (A <-> B) ---
 const BG_FORMULA_TABLES = {
     Mirror: {
         '112': '212', '132': '213', '212': '112', '213': '132', '311': '322',
@@ -532,7 +576,7 @@ const BG_FORMULA_TABLES = {
     }
 };
 
-function getFourBackgroundsForGray(gm, gc) {
+function getMirrorBackgroundForGray(gm, gc) {
     const bgMode = (gm === 'A') ? 'B' : 'A';
     const list = [];
     let idx = 1;
@@ -545,14 +589,14 @@ function getFourBackgroundsForGray(gm, gc) {
             combo: bgCombo,
             key: `${bgMode}-${bgCombo}`,
             code: `${bgMode}${bgCombo}`,
-            layerId: `Background_${idx - 1}_${formulaName}_${bgMode}${bgCombo}`
+            layerId: 'Background_Layer'
         });
     }
     return { primary: list[0], all: list };
 }
 
 // ============================================================================
-// ЗАДЕЛ АРХИТЕКТУРЫ ПОД ШАБЛОН ТРАФАРЕТА (ФЛАПСЫ, МАРКЕРЫ, ТЕХ. НАЗВАНИЯ СЛОЁВ)
+// STENCIL HARDWARE TEMPLATE SCAFFOLDING (FLAPS, REG MARKERS, TECH LABELS)
 // ============================================================================
 const STENCIL_TEMPLATE_CONFIG = {
     enabled: false,
@@ -568,10 +612,10 @@ const STENCIL_TEMPLATE_CONFIG = {
 
 function buildStencilHardwareSvg(item, cvsW, cvsH) {
     if (!STENCIL_TEMPLATE_CONFIG.enabled) return '';
-    return `  <g id="Stencil_Hardware_${item.seqNum}"></g>\n`;
+    return `  <g id="Stencil_Hardware"></g>\n`;
 }
 
-// --- CRC32 и сборка ZIP с поддержкой UTF-8 ---
+// --- CRC32 & UTF-8 ZIP builder ---
 const CRC_TABLE = new Uint32Array(256).map((_, n) => {
     let c = n;
     for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
@@ -645,7 +689,7 @@ function buildZipBlob(filesList) {
     return new Blob(chunks, { type: 'application/zip' });
 }
 
-// --- Размытие по Гауссу ---
+// --- Separable Gaussian blur (grayscale) ---
 function applyGaussianBlurGray(srcFloat, w, h, sigma) {
     if (sigma <= 0.01) return new Float32Array(srcFloat);
     const radius = Math.max(1, Math.ceil(sigma * 3));
@@ -700,7 +744,7 @@ function grayFloatToDataURL(grayArr, w, h) {
     return cvs.toDataURL('image/png');
 }
 
-// Утверждённый гибридный алгоритм оценки (Structure + Tone)
+// Hybrid similarity metric (65% Pearson structure + 35% RMSE tone)
 function computeSimilarity(refArr, candArr, maskArr) {
     let n = 0, sumR = 0, sumC = 0, sqDiffSum = 0;
     for (let i = 0; i < refArr.length; i++) {
@@ -731,7 +775,7 @@ function computeSimilarity(refArr, candArr, maskArr) {
     return (0.65 * pearson + 0.35 * tonalMatch) * 100;
 }
 
-// --- Генерация полигонов для одного состояния (с поддержкой isInverse для Checkered и isNegative для Continuous) ---
+// --- Generate polygon geometry for a single monochrome state ---
 function buildMonoPolygonsData(prefix, modeLetter, combo, options = { isInverse: false, isNegative: false }) {
     const mode = RANK_MODE_REV[modeLetter] || modeLetter;
     const cols = parseInt(document.getElementById('colsInput').value);
@@ -832,17 +876,7 @@ function polysArrayToPath2D(polys) {
     return path;
 }
 
-function polysArrayToSvgGroup(groupId, fillHex, polys, indent = '  ', hidden = false) {
-    const styleAttr = hidden ? ' style="display:none"' : '';
-    let s = `${indent}<g id="${groupId}" fill="${fillHex}"${styleAttr}>\n`;
-    for (let i = 0; i < polys.length; i++) {
-        s += `${indent}  <polygon points="${polys[i].map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}" />\n`;
-    }
-    s += `${indent}</g>\n`;
-    return s;
-}
-
-// Змейка-раскладка от краёв к центру: [0, N-1, 1, N-2, 2, N-3, ...]
+// Alternating fold-spread ordering from extremes to center: [0, N-1, 1, N-2, 2, N-3, ...]
 function foldSpreadArray(sortedArr, startFromBest = true) {
     const res = [];
     let left = 0, right = sortedArr.length - 1;
@@ -864,7 +898,7 @@ function foldSpreadArray(sortedArr, startFromBest = true) {
     return res;
 }
 
-// --- Стили и DOM галереи (32 карточки, без лишней текстовой информации о фонах) ---
+// --- Gallery styles & DOM ---
 const galleryStyle = document.createElement('style');
 galleryStyle.textContent = `
     #rankGalleryContainer {
@@ -930,15 +964,14 @@ if (rankBlurInput && valRankBlur) {
     valRankBlur.addEventListener('change', (e) => { rankBlurInput.value = e.target.value; });
 }
 
-// Обновление подписи кнопки при смене режима серого (Continuous / Checkered / Mixed)
 const rankGrayStyleSelect = document.getElementById('rankGrayStyleSelect');
 rankGrayStyleSelect?.addEventListener('change', () => {
     const btn = document.getElementById('runAutoRankBtn');
     if (!btn) return;
     if (rankGrayStyleSelect.value === 'mixed') {
-        btn.textContent = '🔍 Просчитать 20+20 → Отобрать 32 (Mixed)';
+        btn.textContent = '🔍 Evaluate 20+20 → Select 32 (Mixed)';
     } else {
-        btn.textContent = '🔍 Просчитать 40 → Отобрать 32';
+        btn.textContent = '🔍 Evaluate 40 → Select 32';
     }
 });
 
@@ -1047,30 +1080,30 @@ function renderGalleryDOM() {
     const refImgSrc = galleryViewState.showBlurred ? lastRefThumbs.blurredUrl : lastRefThumbs.crispUrl;
     const modeSel = document.getElementById('rankGrayStyleSelect')?.value || 'continuous';
     const subHeader = (modeSel === 'mixed')
-        ? 'Mixed: 16 CHK + 16 CNT (чередование через 1)'
-        : `${modeSel === 'checkered' ? 'Checkered' : 'Continuous'}: 32 из 40 (1, 32, 2, 31...)`;
+        ? 'Mixed: 16 CHK + 16 CNT (alternating 1-by-1)'
+        : `${modeSel === 'checkered' ? 'Checkered' : 'Continuous'}: 32 of 40 (1, 32, 2, 31...)`;
 
     galleryEl.innerHTML = `
         <div class="rank-toolbar">
             <div class="rank-ref-box">
                 <img src="${refImgSrc}" class="${imgClass}">
                 <div>
-                    <div style="font-weight:bold; font-size:0.85rem; color:#4CAF50;">Эталон (${lastRefThumbs.w}×${lastRefThumbs.h} px)</div>
+                    <div style="font-weight:bold; font-size:0.85rem; color:#4CAF50;">Reference (${lastRefThumbs.w}×${lastRefThumbs.h} px)</div>
                     <div style="font-size:0.75rem; color:#aaa;">${subHeader}</div>
                 </div>
             </div>
             <div class="rank-controls">
                 <button class="rank-btn ${!galleryViewState.showBlurred ? 'active' : ''}" id="btnViewCrisp">
-                    ✨ Чёткие миниатюры
+                    ✨ Crisp Previews
                 </button>
                 <button class="rank-btn ${galleryViewState.showBlurred ? 'active' : ''}" id="btnViewBlur">
-                    👁 33px + Гаусс
+                    👁 33px + Blur
                 </button>
                 <button class="rank-btn" id="btnToolbarExportZip" style="background:#9C27B0; border-color:#9C27B0; font-weight:bold;">
-                    📦 Скачать 32 SVG (+4 фона) в ZIP
+                    📦 Download 32 SVGs (ZIP)
                 </button>
                 <button class="rank-btn" id="btnBackToCanvas" style="background:#2196F3; border-color:#2196F3;">
-                    🖼 На холст
+                    🖼 Back to Canvas
                 </button>
             </div>
         </div>
@@ -1104,7 +1137,7 @@ function renderGalleryDOM() {
     });
 }
 
-// Вспомогательная функция оценки одного наложения (bPath + gPath) на 33px сенсоре
+// Evaluate candidate composite (bPath + gPath) on the 33px sensor
 function evaluateCandidateScore(ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, gPath, styleMode, thumbW, thumbH, scale33, cvsW, cvsH, isCropped, showOnWhite, showOnBlack, sigma, refBlurredGray, activeMask) {
     ctxSensor.globalCompositeOperation = 'source-over';
     ctxSensor.fillStyle = '#ffffff';
@@ -1158,7 +1191,7 @@ function evaluateCandidateScore(ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, 
     return computeSimilarity(refBlurredGray, blurredGray, activeMask);
 }
 
-// --- Главный расчёт 32 Сфирот (поддерживает Continuous, Checkered и Mixed) ---
+// --- Main 32 Sefirot auto-selection pipeline ---
 async function compute32SefirotPatterns() {
     if (!sourceImage.src || !mainCanvas.width) return;
     const btn = document.getElementById('runAutoRankBtn');
@@ -1261,10 +1294,9 @@ async function compute32SefirotPatterns() {
     const needChk = (rankStyleChoice === 'checkered' || rankStyleChoice === 'mixed');
     const needCnt = (rankStyleChoice === 'continuous' || rankStyleChoice === 'mixed');
 
-    // Предрасчёт 20 Серых баз (для Mixed считаем и gaps для Checkered, и neg для Continuous)
     for (let i = 0; i < grayStates.length; i++) {
         const gs = grayStates[i];
-        if (btn) btn.textContent = `⏳ Серые базы: ${i + 1} / 20...`;
+        if (btn) btn.textContent = `⏳ Gray bases: ${i + 1} / 20...`;
         await new Promise(r => setTimeout(r, 0));
 
         const gOrig = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: false, isNegative: false });
@@ -1282,7 +1314,7 @@ async function compute32SefirotPatterns() {
     for (let i = 0; i < blackStates.length; i++) {
         const bs = blackStates[i];
         if (i % 12 === 0) {
-            if (btn) btn.textContent = `⏳ Чёрные варианты: ${i + 1} / 108...`;
+            if (btn) btn.textContent = `⏳ Black variants: ${i + 1} / 108...`;
             await new Promise(r => setTimeout(r, 0));
         }
         const bPolys = buildMonoPolygonsData('black', bs.mLetter, bs.combo, { isInverse: false, isNegative: false });
@@ -1297,8 +1329,6 @@ async function compute32SefirotPatterns() {
     let spread32 = [];
 
     if (rankStyleChoice === 'mixed') {
-        // РЕЖИМ MIXED:
-        // По каждому из 20 серых узоров берём Топ-1 для Checkered (20 шт.) и Топ-1 для Continuous (20 шт.)
         const pool20Chk = [];
         const pool20Cnt = [];
 
@@ -1308,7 +1338,7 @@ async function compute32SefirotPatterns() {
             const candsChk = [];
             const candsCnt = [];
 
-            if (btn) btn.textContent = `🔍 Mixed Топ-1 (CHK+CNT) для Серого ${pIdx + 1} / 20...`;
+            if (btn) btn.textContent = `🔍 Mixed Top-1 (CHK+CNT) for Gray ${pIdx + 1} / 20...`;
             await new Promise(r => setTimeout(r, 0));
 
             for (const bState of blackStates) {
@@ -1325,7 +1355,7 @@ async function compute32SefirotPatterns() {
                     grayRenderMode: 'checkered',
                     bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
                     gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
-                    bgs: getFourBackgroundsForGray(gState.mLetter, gState.combo),
+                    bgs: getMirrorBackgroundForGray(gState.mLetter, gState.combo),
                     score: scoreChk,
                     crispUrl: null, blurredUrl: null
                 });
@@ -1340,7 +1370,7 @@ async function compute32SefirotPatterns() {
                     grayRenderMode: 'continuous',
                     bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
                     gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
-                    bgs: getFourBackgroundsForGray(gState.mLetter, gState.combo),
+                    bgs: getMirrorBackgroundForGray(gState.mLetter, gState.combo),
                     score: scoreCnt,
                     crispUrl: null, blurredUrl: null
                 });
@@ -1349,11 +1379,10 @@ async function compute32SefirotPatterns() {
             candsChk.sort((a, b) => b.score - a.score);
             candsCnt.sort((a, b) => b.score - a.score);
 
-            pool20Chk.push(candsChk[0]); // Только Топ-1 для Шахматки
-            pool20Cnt.push(candsCnt[0]); // Только Топ-1 для Продолжительного
+            pool20Chk.push(candsChk[0]);
+            pool20Cnt.push(candsCnt[0]);
         }
 
-        // Отсеиваем по 4 худших в каждой группе (оставляем по 16 лучших)
         pool20Chk.sort((a, b) => b.score - a.score);
         pool20Cnt.sort((a, b) => b.score - a.score);
 
@@ -1368,20 +1397,14 @@ async function compute32SefirotPatterns() {
             badgeLabel: `CNT #${idx + 1}/16`
         }));
 
-        // Равномерно размазываем качество в обеих шестнадцатках в противофазе:
-        // spreadChk: #1, #16, #2, #15, #3, #14, ..., #8, #9
-        // spreadCnt: #16, #1, #15, #2, #14, #3, ..., #9, #8
         const spreadChk = foldSpreadArray(best16Chk, true);
         const spreadCnt = foldSpreadArray(best16Cnt, false);
 
-        // Чередуем строго через один: Шахматка - Продолжительный - Шахматка - Продолжительный...
         for (let i = 0; i < 16; i++) {
             spread32.push(spreadChk[i]);
             spread32.push(spreadCnt[i]);
         }
     } else {
-        // ОДИНОЧНЫЙ РЕЖИМ (Checkered ИЛИ Continuous):
-        // По каждому из 20 серых узоров берём Топ-2 -> 40 вариантов -> откидываем 8 худших -> 32
         const pool40 = [];
         const styleTag = (rankStyleChoice === 'checkered') ? 'CHK' : 'CNT';
 
@@ -1390,7 +1413,7 @@ async function compute32SefirotPatterns() {
             const gPath = cachedGrayPaths.get(gState.key);
             const candidatesForThisGray = [];
 
-            if (btn) btn.textContent = `🔍 Отбор Топ-2 (${styleTag}) для Серого ${pIdx + 1} / 20...`;
+            if (btn) btn.textContent = `🔍 Selecting Top-2 (${styleTag}) for Gray ${pIdx + 1} / 20...`;
             await new Promise(r => setTimeout(r, 0));
 
             for (const bState of blackStates) {
@@ -1408,7 +1431,7 @@ async function compute32SefirotPatterns() {
                     grayRenderMode: rankStyleChoice,
                     bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
                     gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
-                    bgs: getFourBackgroundsForGray(gState.mLetter, gState.combo),
+                    bgs: getMirrorBackgroundForGray(gState.mLetter, gState.combo),
                     score,
                     crispUrl: null, blurredUrl: null
                 });
@@ -1426,11 +1449,9 @@ async function compute32SefirotPatterns() {
             badgeLabel: `${styleTag} #${idx + 1}/32`
         }));
 
-        // Равномерно размазываем 32 узора по всему ряду (1, 32, 2, 31, ..., 16, 17)
         spread32 = foldSpreadArray(best32Sorted, true);
     }
 
-    // Присваиваем номера 1..32, буквы Сфирот и чистые имена без упоминания фона: "1 א' A### B###"
     spread32.forEach((item, idx) => {
         const seqNum = idx + 1;
         const symbol = SEFIROT_SYMBOLS[idx];
@@ -1445,8 +1466,8 @@ async function compute32SefirotPatterns() {
     if (btn) {
         btn.disabled = false;
         btn.textContent = (rankStyleChoice === 'mixed')
-            ? '🔍 Пересчитать 20+20 → 32 (Mixed)'
-            : '🔍 Пересчитать 40 → 32';
+            ? '🔍 Recalculate 20+20 → 32 (Mixed)'
+            : '🔍 Recalculate 40 → 32';
     }
 }
 
@@ -1456,7 +1477,7 @@ document.getElementById('runAutoRankBtn')?.addEventListener('click', async () =>
     renderGalleryDOM();
 });
 
-// --- ЭКСПОРТ 32 SVG С 4 МАТЕМАТИЧЕСКИМИ ФОНАМИ ВНУТРИ КАЖДОГО ФАЙЛА ---
+// --- Export 32 SVGs as a ZIP archive with unified layer structure ---
 async function export32SvgZip() {
     const expBtn = document.getElementById('exportTopSvgZipBtn');
     const toolbarBtn = document.getElementById('btnToolbarExportZip');
@@ -1495,61 +1516,67 @@ async function export32SvgZip() {
 
     for (let i = 0; i < selected32List.length; i++) {
         const item = selected32List[i];
-        const statusText = `📦 Сборка SVG: ${i + 1} / 32...`;
+        const statusText = `📦 Building SVG: ${i + 1} / 32...`;
         if (expBtn) expBtn.textContent = statusText;
         if (toolbarBtn) toolbarBtn.textContent = statusText;
         await new Promise(r => setTimeout(r, 0));
 
         const blackPolys = cachedBlackPolys.get(item.bKey);
         const grayPolys = cachedGrayPolys.get(item.gKey);
-        const modeTag = (item.grayRenderMode === 'checkered') ? 'CHK' : 'CNT';
+        const rootSvgId = `Layer_Print_${item.bm}${item.bc}_${item.gm}${item.gc}_${item.bgs.primary.code}`;
 
-        let svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cvsW} ${cvsH}">\n`;
+        let svgStr = `<svg version="1.1" id="${rootSvgId}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cvsW} ${cvsH}">\n`;
 
         svgStr += buildStencilHardwareSvg(item, cvsW, cvsH);
 
-        // Вкладываем 4 математических фона (первый виден, остальные 3 скрыты до включения в Illustrator)
+        // Bottom layer in Illustrator: Background Layer
         for (let bIdx = 0; bIdx < item.bgs.all.length; bIdx++) {
             const bgInfo = item.bgs.all[bIdx];
             const bgPolys = cachedBlackPolys.get(bgInfo.key);
             svgStr += polysArrayToSvgGroup(bgInfo.layerId, '#000000', bgPolys, '  ', false);
         }
 
-        // Группа Объекта (с учётом стиля этой конкретной карточки: Checkered или Continuous)
-        svgStr += `  <g id="Object_${item.bm}${item.bc}_${item.gm}${item.gc}_${modeTag}">\n`;
+        // Hexagon crop mask (when enabled)
         if (isCropped) {
-            svgStr += polysArrayToSvgGroup('Layer_Crop_Hexagons', '#FFFFFF', hexPolys, '    ');
+            svgStr += polysArrayToSvgGroup('Layer_Hexagons', '#FFFFFF', hexPolys, '  ');
         }
+
+        // Interleaved stencil stack (top-to-bottom in Illustrator: Black -> Gray Negative -> Black -> Gray -> Black)
         if (item.grayRenderMode === 'checkered') {
-            svgStr += polysArrayToSvgGroup('Layer_Gray', grayColor, grayPolys.orig, '    ');
-            svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '    ');
+            svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '  ');
+            svgStr += polysArrayToSvgGroup('Layer_Gray', grayColor, grayPolys.orig, '  ');
+            svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '  ');
         } else {
-            svgStr += polysArrayToSvgGroup('Layer_Gray_Original', grayColor, grayPolys.orig, '    ');
-            svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '    ');
-            svgStr += polysArrayToSvgGroup('Layer_Gray_Negative', grayColor, grayPolys.neg, '    ');
+            svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '  ');
+            svgStr += polysArrayToSvgGroup('Layer_Gray', grayColor, grayPolys.orig, '  ');
+            svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '  ');
+            svgStr += polysArrayToSvgGroup('Layer_Gray_Negative', grayColor, grayPolys.neg, '  ');
+            svgStr += polysArrayToSvgGroup('Layer_Black', '#000000', blackPolys, '  ');
         }
-        svgStr += `  </g>\n`;
 
         svgStr += `</svg>`;
 
         zipFiles.push({ name: item.fileName, content: svgStr });
     }
 
+    const rankStyleChoice = document.getElementById('rankGrayStyleSelect')?.value || 'continuous';
+    const styleLabel = rankStyleChoice === 'mixed' ? 'Mixed' : (rankStyleChoice === 'checkered' ? 'CHK' : 'CNT');
+
     const zipBlob = buildZipBlob(zipFiles);
     const url = URL.createObjectURL(zipBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `xylo_${cols}x${rows}_32_Sefirot.zip`;
+    link.download = `32 Sefirot ${cols}x${rows} ${styleLabel}.zip`;
     link.click();
     URL.revokeObjectURL(url);
 
     if (expBtn) {
         expBtn.disabled = false;
-        expBtn.textContent = '📦 Скачать 32 SVG (+4 фона) в ZIP';
+        expBtn.textContent = '📦 Download 32 SVGs (ZIP)';
     }
     if (toolbarBtn) {
         toolbarBtn.disabled = false;
-        toolbarBtn.textContent = '📦 Скачать 32 SVG (+4 фона) в ZIP';
+        toolbarBtn.textContent = '📦 Download 32 SVGs (ZIP)';
     }
 }
 

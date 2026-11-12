@@ -1,4 +1,4 @@
-// Вычисляет точку пересечения двух отрезков
+// Compute intersection point of two line segments
 export function computeIntersection(S, E, clipStart, clipEnd, dx2, dy2) {
     const dx1 = E.x - S.x; const dy1 = E.y - S.y;
     const det = dx1 * dy2 - dy1 * dx2;
@@ -7,7 +7,7 @@ export function computeIntersection(S, E, clipStart, clipEnd, dx2, dy2) {
     return { x: S.x + t1 * dx1, y: S.y + t1 * dy1 };
 }
 
-// Алгоритм Сазерленда — Ходжмена для обрезки полигонов по границам ромба
+// Sutherland-Hodgman polygon clipping algorithm
 export function clipPolygon(subjectPoly, clipPoly) {
     let outputList = subjectPoly;
     for (let i = 0; i < clipPoly.length; i++) {
@@ -33,7 +33,7 @@ export function clipPolygon(subjectPoly, clipPoly) {
     return outputList;
 }
 
-// Сглаживание линий (только для Ч/Б режима)
+// Cubic Bezier polyline smoothing (Monochrome mode)
 export function generateSmoothPolyline(points, smoothFactor, resolution = 5) {
     if (points.length < 2 || smoothFactor === 0) return points; 
     let polyline = [points[0]];
@@ -66,5 +66,5 @@ export function drawPolysArray(ctx, polys) {
         for(let j=1; j<polys[i].length; j++) ctx.lineTo(polys[i][j].x, polys[i][j].y);
         ctx.closePath();
     }
-    ctx.fill();
+    return ctx.fill();
 }
