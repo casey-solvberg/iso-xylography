@@ -540,14 +540,13 @@ document.getElementById('downloadSvgBtn')?.addEventListener('click', () => {
 initApp();
 
 // ============================================================================
-// 20 GRAY PATTERNS (10 COMBOS × A,B) -> 32 SEFIROT (CONTINUOUS / CHECKERED / MIXED)
-// + MIRROR BACKGROUND LAYER + STENCIL HARDWARE SCAFFOLDING
+// 20 GRAY PATTERNS (10 COMBOS × A,B) -> 16 RUNES (8 CHECKERED + 8 CONTINUOUS)
+// + MIRROR BACKGROUND LAYER
 // ============================================================================
 
-const SEFIROT_SYMBOLS = [
-    "א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ז'", "ח'", "ט'", "י'",
-    "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט", "י", "כ",
-    "ל", "מ", "נ", "ס", "ע", "פ", "צ", "ק", "ר", "ש", "ת"
+const RUNE_SYMBOLS = [
+    'ᚠ', 'ᚢ', 'ᚦ', 'ᚬ', 'ᚱ', 'ᚴ', 'ᚼ', 'ᚾ',
+    'ᛁ', 'ᛅ', 'ᛋ', 'ᛏ', 'ᛒ', 'ᛘ', 'ᛚ', 'ᛦ'
 ];
 
 // 10 approved Gray layer combinations (modes A & B yield 20 base patterns)
@@ -593,26 +592,6 @@ function getMirrorBackgroundForGray(gm, gc) {
         });
     }
     return { primary: list[0], all: list };
-}
-
-// ============================================================================
-// STENCIL HARDWARE TEMPLATE SCAFFOLDING (FLAPS, REG MARKERS, TECH LABELS)
-// ============================================================================
-const STENCIL_TEMPLATE_CONFIG = {
-    enabled: false,
-    canvasPreset: 'default',
-    marginTop: 0,
-    marginBottom: 0,
-    marginLeft: 0,
-    marginRight: 0,
-    drawFlaps: false,
-    drawRegMarkers: false,
-    drawTechLabels: false
-};
-
-function buildStencilHardwareSvg(item, cvsW, cvsH) {
-    if (!STENCIL_TEMPLATE_CONFIG.enabled) return '';
-    return `  <g id="Stencil_Hardware"></g>\n`;
 }
 
 // --- CRC32 & UTF-8 ZIP builder ---
@@ -938,7 +917,7 @@ galleryStyle.textContent = `
     .pixelated-img { image-rendering: pixelated; }
     .rank-badge { display: flex; justify-content: space-between; font-size: 0.72rem; margin-bottom: 4px; color: #aaa; }
     .rank-score { color: #4CAF50; font-weight: bold; }
-    .rank-title { font-size: 0.86rem; font-weight: bold; color: #fff; direction: ltr; }
+    .rank-title { font-size: 0.86rem; font-weight: bold; color: #fff; direction: ltr; font-family: 'Segoe UI Historic', 'Segoe UI Symbol', sans-serif; }
 `;
 document.head.appendChild(galleryStyle);
 
@@ -947,7 +926,7 @@ const galleryEl = document.createElement('div');
 galleryEl.id = 'rankGalleryContainer';
 viewportEl.appendChild(galleryEl);
 
-let selected32List = [];
+let selected16List = [];
 let lastRefThumbs = { blurredUrl: '', crispUrl: '', w: 33, h: 33 };
 let galleryViewState = { showBlurred: false };
 
@@ -963,17 +942,6 @@ if (rankBlurInput && valRankBlur) {
     rankBlurInput.addEventListener('input', (e) => { valRankBlur.value = e.target.value; });
     valRankBlur.addEventListener('change', (e) => { rankBlurInput.value = e.target.value; });
 }
-
-const rankGrayStyleSelect = document.getElementById('rankGrayStyleSelect');
-rankGrayStyleSelect?.addEventListener('change', () => {
-    const btn = document.getElementById('runAutoRankBtn');
-    if (!btn) return;
-    if (rankGrayStyleSelect.value === 'mixed') {
-        btn.textContent = '🔍 Evaluate 20+20 → Select 32 (Mixed)';
-    } else {
-        btn.textContent = '🔍 Evaluate 40 → Select 32';
-    }
-});
 
 function setGalleryVisibility(showGallery) {
     const toggleBtn = document.getElementById('toggleGalleryViewBtn');
@@ -1073,15 +1041,12 @@ function applyComboToUI(prefix, modeLetter, combo) {
 }
 
 function renderGalleryDOM() {
-    if (selected32List.length === 0) return;
-    selected32List.forEach(ensureItemThumbnails);
+    if (selected16List.length === 0) return;
+    selected16List.forEach(ensureItemThumbnails);
 
     const imgClass = galleryViewState.showBlurred ? 'pixelated-img' : '';
     const refImgSrc = galleryViewState.showBlurred ? lastRefThumbs.blurredUrl : lastRefThumbs.crispUrl;
-    const modeSel = document.getElementById('rankGrayStyleSelect')?.value || 'continuous';
-    const subHeader = (modeSel === 'mixed')
-        ? 'Mixed: 16 CHK + 16 CNT (alternating 1-by-1)'
-        : `${modeSel === 'checkered' ? 'Checkered' : 'Continuous'}: 32 of 40 (1, 32, 2, 31...)`;
+    const subHeader = '16 Unique Grays: 8 CHK + 8 CNT (alternating 1-by-1)';
 
     galleryEl.innerHTML = `
         <div class="rank-toolbar">
@@ -1100,7 +1065,7 @@ function renderGalleryDOM() {
                     👁 33px + Blur
                 </button>
                 <button class="rank-btn" id="btnToolbarExportZip" style="background:#9C27B0; border-color:#9C27B0; font-weight:bold;">
-                    📦 Download 32 SVGs (ZIP)
+                    📦 Download 16 SVGs (ZIP)
                 </button>
                 <button class="rank-btn" id="btnBackToCanvas" style="background:#2196F3; border-color:#2196F3;">
                     🖼 Back to Canvas
@@ -1108,7 +1073,7 @@ function renderGalleryDOM() {
             </div>
         </div>
         <div class="rank-grid">
-            ${selected32List.map((item) => `
+            ${selected16List.map((item) => `
                 <div class="rank-card" data-bm="${item.bm}" data-bc="${item.bc}" data-gm="${item.gm}" data-gc="${item.gc}" data-gstyle="${item.grayRenderMode}">
                     <div class="rank-badge">
                         <span>${item.badgeLabel}</span>
@@ -1123,7 +1088,7 @@ function renderGalleryDOM() {
 
     document.getElementById('btnViewBlur').onclick = () => { galleryViewState.showBlurred = true; renderGalleryDOM(); };
     document.getElementById('btnViewCrisp').onclick = () => { galleryViewState.showBlurred = false; renderGalleryDOM(); };
-    document.getElementById('btnToolbarExportZip').onclick = () => export32SvgZip();
+    document.getElementById('btnToolbarExportZip').onclick = () => export16SvgZip();
     document.getElementById('btnBackToCanvas').onclick = () => setGalleryVisibility(false);
 
     galleryEl.querySelectorAll('.rank-card').forEach(card => {
@@ -1191,8 +1156,8 @@ function evaluateCandidateScore(ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, 
     return computeSimilarity(refBlurredGray, blurredGray, activeMask);
 }
 
-// --- Main 32 Sefirot auto-selection pipeline ---
-async function compute32SefirotPatterns() {
+// --- Main 16 Runes auto-selection pipeline (8 CHK + 8 CNT, 16 unique Gray bases) ---
+async function compute16RunePatterns() {
     if (!sourceImage.src || !mainCanvas.width) return;
     const btn = document.getElementById('runAutoRankBtn');
     if (btn) btn.disabled = true;
@@ -1201,7 +1166,6 @@ async function compute32SefirotPatterns() {
     const rows = parseInt(document.getElementById('rowsInput').value);
     const cvsW = mainCanvas.width, cvsH = mainCanvas.height;
     const sigma = parseFloat(document.getElementById('val-rankBlur').value) || 0;
-    const rankStyleChoice = document.getElementById('rankGrayStyleSelect')?.value || 'continuous';
 
     const minSide = Math.min(cvsW, cvsH);
     const scale33 = 33 / minSide;
@@ -1291,23 +1255,20 @@ async function compute32SefirotPatterns() {
     cachedBlackPaths.clear();
     cachedGrayPaths.clear();
 
-    const needChk = (rankStyleChoice === 'checkered' || rankStyleChoice === 'mixed');
-    const needCnt = (rankStyleChoice === 'continuous' || rankStyleChoice === 'mixed');
-
     for (let i = 0; i < grayStates.length; i++) {
         const gs = grayStates[i];
         if (btn) btn.textContent = `⏳ Gray bases: ${i + 1} / 20...`;
         await new Promise(r => setTimeout(r, 0));
 
         const gOrig = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: false, isNegative: false });
-        const gGaps = needChk ? buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: true, isNegative: false }) : [];
-        const gNeg  = needCnt ? buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: false, isNegative: true }) : [];
+        const gGaps = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: true, isNegative: false });
+        const gNeg  = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: false, isNegative: true });
 
         cachedGrayPolys.set(gs.key, { orig: gOrig, gaps: gGaps, neg: gNeg });
         cachedGrayPaths.set(gs.key, {
             orig: polysArrayToPath2D(gOrig),
-            gaps: needChk ? polysArrayToPath2D(gGaps) : null,
-            neg:  needCnt ? polysArrayToPath2D(gNeg) : null
+            gaps: polysArrayToPath2D(gGaps),
+            neg:  polysArrayToPath2D(gNeg)
         });
     }
 
@@ -1326,164 +1287,135 @@ async function compute32SefirotPatterns() {
     const showOnBlack = document.getElementById('grayOnBlack').checked;
     const isCropped = document.getElementById('cropToHex')?.checked;
 
-    let spread32 = [];
+    const pool20Chk = [];
+    const pool20Cnt = [];
 
-    if (rankStyleChoice === 'mixed') {
-        const pool20Chk = [];
-        const pool20Cnt = [];
+    for (let pIdx = 0; pIdx < grayStates.length; pIdx++) {
+        const gState = grayStates[pIdx];
+        const gPath = cachedGrayPaths.get(gState.key);
+        const candsChk = [];
+        const candsCnt = [];
 
-        for (let pIdx = 0; pIdx < grayStates.length; pIdx++) {
-            const gState = grayStates[pIdx];
-            const gPath = cachedGrayPaths.get(gState.key);
-            const candsChk = [];
-            const candsCnt = [];
+        if (btn) btn.textContent = `🔍 Evaluating CHK+CNT for Gray ${pIdx + 1} / 20...`;
+        await new Promise(r => setTimeout(r, 0));
 
-            if (btn) btn.textContent = `🔍 Mixed Top-1 (CHK+CNT) for Gray ${pIdx + 1} / 20...`;
-            await new Promise(r => setTimeout(r, 0));
+        for (const bState of blackStates) {
+            if (bState.combo === gState.combo) continue;
+            const bPath = cachedBlackPaths.get(bState.key);
 
-            for (const bState of blackStates) {
-                if (bState.combo === gState.combo) continue;
-                const bPath = cachedBlackPaths.get(bState.key);
+            const scoreChk = evaluateCandidateScore(
+                ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, gPath, 'checkered',
+                thumbW, thumbH, scale33, cvsW, cvsH, isCropped, showOnWhite, showOnBlack,
+                sigma, refBlurredGray, activeMask
+            );
+            candsChk.push({
+                grayPatternNum: pIdx + 1,
+                grayRenderMode: 'checkered',
+                bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
+                gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
+                bgs: getMirrorBackgroundForGray(gState.mLetter, gState.combo),
+                score: scoreChk,
+                crispUrl: null, blurredUrl: null
+            });
 
-                const scoreChk = evaluateCandidateScore(
-                    ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, gPath, 'checkered',
-                    thumbW, thumbH, scale33, cvsW, cvsH, isCropped, showOnWhite, showOnBlack,
-                    sigma, refBlurredGray, activeMask
-                );
-                candsChk.push({
-                    grayPatternNum: pIdx + 1,
-                    grayRenderMode: 'checkered',
-                    bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
-                    gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
-                    bgs: getMirrorBackgroundForGray(gState.mLetter, gState.combo),
-                    score: scoreChk,
-                    crispUrl: null, blurredUrl: null
-                });
-
-                const scoreCnt = evaluateCandidateScore(
-                    ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, gPath, 'continuous',
-                    thumbW, thumbH, scale33, cvsW, cvsH, isCropped, showOnWhite, showOnBlack,
-                    sigma, refBlurredGray, activeMask
-                );
-                candsCnt.push({
-                    grayPatternNum: pIdx + 1,
-                    grayRenderMode: 'continuous',
-                    bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
-                    gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
-                    bgs: getMirrorBackgroundForGray(gState.mLetter, gState.combo),
-                    score: scoreCnt,
-                    crispUrl: null, blurredUrl: null
-                });
-            }
-
-            candsChk.sort((a, b) => b.score - a.score);
-            candsCnt.sort((a, b) => b.score - a.score);
-
-            pool20Chk.push(candsChk[0]);
-            pool20Cnt.push(candsCnt[0]);
+            const scoreCnt = evaluateCandidateScore(
+                ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, gPath, 'continuous',
+                thumbW, thumbH, scale33, cvsW, cvsH, isCropped, showOnWhite, showOnBlack,
+                sigma, refBlurredGray, activeMask
+            );
+            candsCnt.push({
+                grayPatternNum: pIdx + 1,
+                grayRenderMode: 'continuous',
+                bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
+                gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
+                bgs: getMirrorBackgroundForGray(gState.mLetter, gState.combo),
+                score: scoreCnt,
+                crispUrl: null, blurredUrl: null
+            });
         }
 
-        pool20Chk.sort((a, b) => b.score - a.score);
-        pool20Cnt.sort((a, b) => b.score - a.score);
+        candsChk.sort((a, b) => b.score - a.score);
+        candsCnt.sort((a, b) => b.score - a.score);
 
-        const best16Chk = pool20Chk.slice(0, 16).map((item, idx) => ({
-            ...item,
-            qualityRank: idx + 1,
-            badgeLabel: `CHK #${idx + 1}/16`
-        }));
-        const best16Cnt = pool20Cnt.slice(0, 16).map((item, idx) => ({
-            ...item,
-            qualityRank: idx + 1,
-            badgeLabel: `CNT #${idx + 1}/16`
-        }));
-
-        const spreadChk = foldSpreadArray(best16Chk, true);
-        const spreadCnt = foldSpreadArray(best16Cnt, false);
-
-        for (let i = 0; i < 16; i++) {
-            spread32.push(spreadChk[i]);
-            spread32.push(spreadCnt[i]);
-        }
-    } else {
-        const pool40 = [];
-        const styleTag = (rankStyleChoice === 'checkered') ? 'CHK' : 'CNT';
-
-        for (let pIdx = 0; pIdx < grayStates.length; pIdx++) {
-            const gState = grayStates[pIdx];
-            const gPath = cachedGrayPaths.get(gState.key);
-            const candidatesForThisGray = [];
-
-            if (btn) btn.textContent = `🔍 Selecting Top-2 (${styleTag}) for Gray ${pIdx + 1} / 20...`;
-            await new Promise(r => setTimeout(r, 0));
-
-            for (const bState of blackStates) {
-                if (bState.combo === gState.combo) continue;
-                const bPath = cachedBlackPaths.get(bState.key);
-
-                const score = evaluateCandidateScore(
-                    ctxSensor, ctxSensorTemp, sensorTempCvs, bPath, gPath, rankStyleChoice,
-                    thumbW, thumbH, scale33, cvsW, cvsH, isCropped, showOnWhite, showOnBlack,
-                    sigma, refBlurredGray, activeMask
-                );
-
-                candidatesForThisGray.push({
-                    grayPatternNum: pIdx + 1,
-                    grayRenderMode: rankStyleChoice,
-                    bm: bState.mLetter, bc: bState.combo, bKey: bState.key,
-                    gm: gState.mLetter, gc: gState.combo, gKey: gState.key,
-                    bgs: getMirrorBackgroundForGray(gState.mLetter, gState.combo),
-                    score,
-                    crispUrl: null, blurredUrl: null
-                });
-            }
-
-            candidatesForThisGray.sort((a, b) => b.score - a.score);
-            pool40.push(candidatesForThisGray[0]);
-            pool40.push(candidatesForThisGray[1]);
-        }
-
-        pool40.sort((a, b) => b.score - a.score);
-        const best32Sorted = pool40.slice(0, 32).map((item, idx) => ({
-            ...item,
-            qualityRank: idx + 1,
-            badgeLabel: `${styleTag} #${idx + 1}/32`
-        }));
-
-        spread32 = foldSpreadArray(best32Sorted, true);
+        pool20Chk.push(candsChk[0]);
+        pool20Cnt.push(candsCnt[0]);
     }
 
-    spread32.forEach((item, idx) => {
+    // Resolve overlaps by similarity score: 16 strictly unique Gray patterns (8 CHK + 8 CNT)
+    const combinedPool = [...pool20Chk, ...pool20Cnt];
+    combinedPool.sort((a, b) => b.score - a.score);
+
+    const usedGrayKeys = new Set();
+    const pickedChk = [];
+    const pickedCnt = [];
+
+    for (const cand of combinedPool) {
+        if (usedGrayKeys.has(cand.gKey)) continue;
+        if (cand.grayRenderMode === 'checkered' && pickedChk.length < 8) {
+            pickedChk.push(cand);
+            usedGrayKeys.add(cand.gKey);
+        } else if (cand.grayRenderMode === 'continuous' && pickedCnt.length < 8) {
+            pickedCnt.push(cand);
+            usedGrayKeys.add(cand.gKey);
+        }
+        if (pickedChk.length === 8 && pickedCnt.length === 8) break;
+    }
+
+    pickedChk.sort((a, b) => b.score - a.score);
+    pickedCnt.sort((a, b) => b.score - a.score);
+
+    const best8Chk = pickedChk.map((item, idx) => ({
+        ...item,
+        qualityRank: idx + 1,
+        badgeLabel: `CHK #${idx + 1}/8`
+    }));
+    const best8Cnt = pickedCnt.map((item, idx) => ({
+        ...item,
+        qualityRank: idx + 1,
+        badgeLabel: `CNT #${idx + 1}/8`
+    }));
+
+    const spreadChk = foldSpreadArray(best8Chk, true);
+    const spreadCnt = foldSpreadArray(best8Cnt, false);
+
+    const spread16 = [];
+    for (let i = 0; i < 8; i++) {
+        spread16.push(spreadChk[i]);
+        spread16.push(spreadCnt[i]);
+    }
+
+    spread16.forEach((item, idx) => {
         const seqNum = idx + 1;
-        const symbol = SEFIROT_SYMBOLS[idx];
+        const symbol = RUNE_SYMBOLS[idx];
+        const styleTag = item.grayRenderMode === 'checkered' ? 'CHK' : 'CNT';
         item.seqNum = seqNum;
         item.symbol = symbol;
-        item.displayName = `${seqNum} ${symbol} ${item.bm}${item.bc} ${item.gm}${item.gc}`;
-        item.fileName = `${item.displayName} ${item.bgs.primary.code}.svg`;
+        item.styleTag = styleTag;
+        item.displayName = `${seqNum} ${symbol} ${item.bm}${item.bc} ${item.gm}${item.gc} ${styleTag}`;
+        item.fileName = `${seqNum} ${symbol} ${item.bm}${item.bc} ${item.gm}${item.gc} ${item.bgs.primary.code} ${styleTag}.svg`;
     });
 
-    selected32List = spread32;
+    selected16List = spread16;
 
     if (btn) {
         btn.disabled = false;
-        btn.textContent = (rankStyleChoice === 'mixed')
-            ? '🔍 Recalculate 20+20 → 32 (Mixed)'
-            : '🔍 Recalculate 40 → 32';
+        btn.textContent = '🔍 Recalculate 20+20 → 16';
     }
 }
 
 document.getElementById('runAutoRankBtn')?.addEventListener('click', async () => {
-    await compute32SefirotPatterns();
+    await compute16RunePatterns();
     setGalleryVisibility(true);
     renderGalleryDOM();
 });
 
-// --- Export 32 SVGs as a ZIP archive with unified layer structure ---
-async function export32SvgZip() {
+// --- Export 16 SVGs as a ZIP archive with unified layer structure ---
+async function export16SvgZip() {
     const expBtn = document.getElementById('exportTopSvgZipBtn');
     const toolbarBtn = document.getElementById('btnToolbarExportZip');
 
-    if (selected32List.length === 0) {
-        await compute32SefirotPatterns();
+    if (selected16List.length === 0) {
+        await compute16RunePatterns();
     }
 
     if (expBtn) expBtn.disabled = true;
@@ -1514,20 +1446,19 @@ async function export32SvgZip() {
 
     const zipFiles = [];
 
-    for (let i = 0; i < selected32List.length; i++) {
-        const item = selected32List[i];
-        const statusText = `📦 Building SVG: ${i + 1} / 32...`;
+    for (let i = 0; i < selected16List.length; i++) {
+        const item = selected16List[i];
+        const statusText = `📦 Building SVG: ${i + 1} / 16...`;
         if (expBtn) expBtn.textContent = statusText;
         if (toolbarBtn) toolbarBtn.textContent = statusText;
         await new Promise(r => setTimeout(r, 0));
 
         const blackPolys = cachedBlackPolys.get(item.bKey);
         const grayPolys = cachedGrayPolys.get(item.gKey);
-        const rootSvgId = `Layer_Print_${item.bm}${item.bc}_${item.gm}${item.gc}_${item.bgs.primary.code}`;
+        const styleTag = item.styleTag || (item.grayRenderMode === 'checkered' ? 'CHK' : 'CNT');
+        const rootSvgId = `Layer_Print_${item.bm}${item.bc}_${item.gm}${item.gc}_${item.bgs.primary.code}_${styleTag}`;
 
         let svgStr = `<svg version="1.1" id="${rootSvgId}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cvsW} ${cvsH}">\n`;
-
-        svgStr += buildStencilHardwareSvg(item, cvsW, cvsH);
 
         // Bottom layer in Illustrator: Background Layer
         for (let bIdx = 0; bIdx < item.bgs.all.length; bIdx++) {
@@ -1559,25 +1490,22 @@ async function export32SvgZip() {
         zipFiles.push({ name: item.fileName, content: svgStr });
     }
 
-    const rankStyleChoice = document.getElementById('rankGrayStyleSelect')?.value || 'continuous';
-    const styleLabel = rankStyleChoice === 'mixed' ? 'Mixed' : (rankStyleChoice === 'checkered' ? 'CHK' : 'CNT');
-
     const zipBlob = buildZipBlob(zipFiles);
     const url = URL.createObjectURL(zipBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `32 Sefirot ${cols}x${rows} ${styleLabel}.zip`;
+    link.download = `16 Runes ${cols}x${rows}.zip`;
     link.click();
     URL.revokeObjectURL(url);
 
     if (expBtn) {
         expBtn.disabled = false;
-        expBtn.textContent = '📦 Download 32 SVGs (ZIP)';
+        expBtn.textContent = '📦 Download 16 SVGs (ZIP)';
     }
     if (toolbarBtn) {
         toolbarBtn.disabled = false;
-        toolbarBtn.textContent = '📦 Download 32 SVGs (ZIP)';
+        toolbarBtn.textContent = '📦 Download 16 SVGs (ZIP)';
     }
 }
 
-document.getElementById('exportTopSvgZipBtn')?.addEventListener('click', export32SvgZip);
+document.getElementById('exportTopSvgZipBtn')?.addEventListener('click', export16SvgZip);
