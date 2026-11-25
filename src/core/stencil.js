@@ -340,7 +340,7 @@ export async function buildProcessedMonoSvg({
     cleanMm = 1.33,
     weldMm = 0.333,
     enableSignature = true,
-    appVersion = 'v2.0'
+    appVersion = 'v2.1'
 }) {
     const ClipperLib = await ensureClipperLoaded();
     const { physWmm, physHmm, toClipperX, toClipperY, toSvgPt, svgW, svgH } = getScaleContext(cvsW, cvsH);

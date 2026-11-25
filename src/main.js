@@ -2,7 +2,7 @@ import { clipPolygon, generateSmoothPolyline, getPolygonArea, drawPolysArray } f
 import { COLOR_SEQUENCE, rgbToHsl, hslToRgb, getShiftedColors, getRGB, decomposeColor } from './core/color.js';
 import { ensureClipperLoaded, buildProcessedMonoSvg } from './core/stencil.js';
 
-const APP_VERSION = 'v2.0';
+const APP_VERSION = 'v2.1';
 const appState = { svgOutput: '', currentMode: 'mono', lastMonoData: null };
 
 const PATTERNS = {
