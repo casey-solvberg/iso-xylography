@@ -58,6 +58,7 @@ const tempCanvas = document.createElement('canvas');
 const ctxTemp = tempCanvas.getContext('2d');
 
 let sourceImage = new Image();
+let loadedImageId = 0;
 
 // --- APP INITIALIZATION ---
 function initApp() {
@@ -101,6 +102,11 @@ function processLoadedImage(img) {
     [hiddenCanvas, tempCanvas, mainCanvas].forEach(c => { c.width = img.width; c.height = img.height; });
     ctxHidden.drawImage(img, 0, 0);
     sourceImage.src = img.src;
+    loadedImageId++;
+    invalidateRuneCache();
+    if (galleryEl && galleryEl.style.display === 'block') {
+        setGalleryVisibility(false);
+    }
     triggerRender();
 }
 
@@ -132,7 +138,9 @@ function switchMode(mode, targetBtn) {
 }
 
 // --- UI BINDINGS ---
+const EXPORT_ONLY_IDS = new Set(['val-cleanMm', 'val-weldMm', 'enableSignature', 'val-rankBlur', 'rankBlurInput']);
 let renderTimeout;
+
 function populateCustomCombos() {
     const selects = document.querySelectorAll('.custom-combo-select');
     let optionsHTML = '';
@@ -174,10 +182,29 @@ function syncControls(sourceEl) {
 }
 
 const triggerRender = () => { clearTimeout(renderTimeout); renderTimeout = setTimeout(() => { renderTimeout = null; render(); }, 50); };
-document.querySelectorAll('.sidebar input[type="range"]').forEach(c => { c.addEventListener('input', (e) => { syncControls(e.target); triggerRender(); }); });
-document.querySelectorAll('.sidebar input[type="number"]').forEach(c => { c.addEventListener('change', (e) => { syncControls(e.target); triggerRender(); }); });
-document.querySelectorAll('.sidebar input[type="checkbox"], .sidebar input[type="radio"], .sidebar select').forEach(c => { c.addEventListener('change', triggerRender); });
-document.querySelectorAll('.custom-combo-select').forEach(sel => { sel.addEventListener('change', () => { document.querySelector(`input[name="${sel.id.split('_')[0]}_combo"][value="custom"]`).checked = true; triggerRender(); }); });
+document.querySelectorAll('.sidebar input[type="range"]').forEach(c => {
+    c.addEventListener('input', (e) => {
+        syncControls(e.target);
+        if (!EXPORT_ONLY_IDS.has(e.target.id)) triggerRender();
+    });
+});
+document.querySelectorAll('.sidebar input[type="number"]').forEach(c => {
+    c.addEventListener('change', (e) => {
+        syncControls(e.target);
+        if (!EXPORT_ONLY_IDS.has(e.target.id)) triggerRender();
+    });
+});
+document.querySelectorAll('.sidebar input[type="checkbox"], .sidebar input[type="radio"], .sidebar select').forEach(c => {
+    c.addEventListener('change', (e) => {
+        if (!EXPORT_ONLY_IDS.has(e.target.id)) triggerRender();
+    });
+});
+document.querySelectorAll('.custom-combo-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+        document.querySelector(`input[name="${sel.id.split('_')[0]}_combo"][value="custom"]`).checked = true;
+        triggerRender();
+    });
+});
 
 function updatePaletteUI(hueShift) {
     const cmap = getShiftedColors(hueShift);
@@ -247,15 +274,49 @@ function getStencilSettings() {
     return { cleanMm, weldMm, enableSignature };
 }
 
-// Unified Monochrome polygon generator
-function buildMonoPolygonsData(prefix, modeOrLetter, combo, options = { isInverse: false, isNegative: false }, preloadedImgData = null) {
+// Convert polygon array into a winding-normalized Path2D so Canvas 'nonzero' fill
+// always performs a true mathematical Union without opposite-winding cancellation
+function polysArrayToPath2D(polys) {
+    const path = new Path2D();
+    for (let i = 0; i < polys.length; i++) {
+        const p = polys[i];
+        if (!p || p.length < 3) continue;
+        let signedArea2 = 0;
+        for (let j = 0, k = p.length - 1; j < p.length; k = j++) {
+            signedArea2 += p[k].x * p[j].y - p[j].x * p[k].y;
+        }
+        if (Math.abs(signedArea2) < 1e-4) continue;
+
+        if (signedArea2 >= 0) {
+            path.moveTo(p[0].x, p[0].y);
+            for (let j = 1; j < p.length; j++) path.lineTo(p[j].x, p[j].y);
+        } else {
+            path.moveTo(p[p.length - 1].x, p[p.length - 1].y);
+            for (let j = p.length - 2; j >= 0; j--) path.lineTo(p[j].x, p[j].y);
+        }
+        path.closePath();
+    }
+    return path;
+}
+
+// Unified Monochrome polygon generator (full outer bleedBounds so border hex walls
+// never lose outer stripe halves or pull back during morphological -1.33mm erosion)
+function buildMonoPolygonsData(prefix, modeOrLetter, combo, options = { isNegative: false }, preloadedImgData = null) {
     const cols = parseInt(document.getElementById('colsInput').value);
     const rows = parseInt(document.getElementById('rowsInput').value);
     const cvsW = mainCanvas.width, cvsH = mainCanvas.height;
     const imgData = preloadedImgData || ctxHidden.getImageData(0, 0, cvsW, cvsH).data;
     const hexW = cvsW / (cols * 2 + 1), hexH = cvsH / (rows * 3 + 1);
     const diagLen = Math.hypot(hexW, hexH);
-    const canvasBounds = [{ x: 0, y: 0 }, { x: cvsW, y: 0 }, { x: cvsW, y: cvsH }, { x: 0, y: cvsH }];
+
+    const bleedX = Math.max(hexW, cvsW * 0.05);
+    const bleedY = Math.max(hexH * 2, cvsH * 0.05);
+    const bleedBounds = [
+        { x: -bleedX, y: -bleedY },
+        { x: cvsW + bleedX, y: -bleedY },
+        { x: cvsW + bleedX, y: cvsH + bleedY },
+        { x: -bleedX, y: cvsH + bleedY }
+    ];
 
     const detailLevel = parseInt(document.getElementById(`${prefix}DetailInput`).value);
     const stepLen = Math.max(cvsW, cvsH) / detailLevel;
@@ -313,20 +374,14 @@ function buildMonoPolygonsData(prefix, modeOrLetter, combo, options = { isInvers
                             let brBot = (rgbBot.r*0.299 + rgbBot.g*0.587 + rgbBot.b*0.114) / 255;
 
                             if (options.isNegative) { brTop = 1.0 - brTop; brBot = 1.0 - brBot; }
-                            let thickTop, thickBot;
-                            if (options.isInverse) {
-                                thickTop = Math.max(0, 1.0 - (minThick + brTop * (maxThick - minThick))) * baseRadius;
-                                thickBot = Math.max(0, 1.0 - (minThick + brBot * (maxThick - minThick))) * baseRadius;
-                            } else {
-                                thickTop = (minThick + (1.0 - brTop) * (maxThick - minThick)) * baseRadius;
-                                thickBot = (minThick + (1.0 - brBot) * (maxThick - minThick)) * baseRadius;
-                            }
+                            const thickTop = (minThick + (1.0 - brTop) * (maxThick - minThick)) * baseRadius;
+                            const thickBot = (minThick + (1.0 - brBot) * (maxThick - minThick)) * baseRadius;
                             cPtsTop.push({ x: px + norm.x * thickTop, y: py + norm.y * thickTop });
                             cPtsBot.push({ x: px - norm.x * thickBot, y: py - norm.y * thickBot });
                         }
                         let clippedPoly = clipPolygon([...generateSmoothPolyline(cPtsTop, smoothFactor), ...generateSmoothPolyline(cPtsBot, smoothFactor).reverse()], clipPoly);
                         if (clippedPoly.length > 2) {
-                            clippedPoly = clipPolygon(clippedPoly, canvasBounds);
+                            clippedPoly = clipPolygon(clippedPoly, bleedBounds);
                             if (clippedPoly.length > 2) polys.push(clippedPoly);
                         }
                     });
@@ -462,6 +517,8 @@ function render() {
     if (appState.currentMode === 'mono') {
         const isBlackEnabled = document.getElementById('enableBlack').checked;
         const isGrayEnabled = document.getElementById('enableGray').checked;
+        const showOnWhite = document.getElementById('grayOnWhite').checked;
+        const showOnBlack = document.getElementById('grayOnBlack').checked;
         const grayRenderMode = document.getElementById('grayRenderMode').value;
         const styleTag = grayRenderMode === 'checkered' ? 'CHK' : 'CNT';
         const grayColor = '#7f7f7f';
@@ -470,39 +527,53 @@ function render() {
         const graySel = getSelectedLayerConfig('gray');
         const bgInfo = getMirrorBackgroundForGray(graySel.modeLetter, graySel.combo).primary;
 
-        let blackPolys = [], grayPolysOriginal = [], grayPolysGaps = [], grayPolysNegative = [], bgPolys = null;
+        let blackPolys = [], grayPolysOriginal = [], grayPolysNegative = [], bgPolys = null;
+        let blackPath = null, grayOrigPath = null, grayNegPath = null;
+
         if (isBlackEnabled) {
-            blackPolys = buildMonoPolygonsData('black', blackSel.modeLetter, blackSel.combo, { isInverse: false, isNegative: false }, imgData);
+            blackPolys = buildMonoPolygonsData('black', blackSel.modeLetter, blackSel.combo, { isNegative: false }, imgData);
+            blackPath = polysArrayToPath2D(blackPolys);
         }
         if (isGrayEnabled) {
-            grayPolysOriginal = buildMonoPolygonsData('gray', graySel.modeLetter, graySel.combo, { isInverse: false, isNegative: false }, imgData);
-            if (grayRenderMode === 'checkered') {
-                grayPolysGaps = buildMonoPolygonsData('gray', graySel.modeLetter, graySel.combo, { isInverse: true, isNegative: false }, imgData);
-            } else {
-                grayPolysNegative = buildMonoPolygonsData('gray', graySel.modeLetter, graySel.combo, { isInverse: false, isNegative: true }, imgData);
+            grayPolysOriginal = buildMonoPolygonsData('gray', graySel.modeLetter, graySel.combo, { isNegative: false }, imgData);
+            grayOrigPath = polysArrayToPath2D(grayPolysOriginal);
+            if (grayRenderMode !== 'checkered') {
+                grayPolysNegative = buildMonoPolygonsData('gray', graySel.modeLetter, graySel.combo, { isNegative: true }, imgData);
+                grayNegPath = polysArrayToPath2D(grayPolysNegative);
             }
-            bgPolys = buildMonoPolygonsData('black', bgInfo.mode, bgInfo.combo, { isInverse: false, isNegative: false }, imgData);
+            bgPolys = buildMonoPolygonsData('black', bgInfo.mode, bgInfo.combo, { isNegative: false }, imgData);
         }
 
-        if (isGrayEnabled && document.getElementById('grayOnWhite').checked) {
+        if (isGrayEnabled && showOnWhite && grayOrigPath) {
             ctxOut.fillStyle = grayColor;
-            drawPolysArray(ctxOut, grayPolysOriginal);
+            ctxOut.fill(grayOrigPath);
         }
 
-        if (isBlackEnabled) {
+        if (isBlackEnabled && blackPath) {
             ctxOut.fillStyle = '#000000';
-            drawPolysArray(ctxOut, blackPolys);
+            ctxOut.fill(blackPath);
         }
 
-        if (isGrayEnabled && isBlackEnabled && document.getElementById('grayOnBlack').checked) {
+        if (isGrayEnabled && isBlackEnabled && showOnBlack && blackPath) {
             ctxTemp.clearRect(0, 0, cvsW, cvsH);
             if (grayRenderMode === 'checkered') {
-                ctxTemp.globalCompositeOperation = 'source-over'; ctxTemp.fillStyle = '#000000'; drawPolysArray(ctxTemp, blackPolys);
-                ctxTemp.globalCompositeOperation = 'destination-out'; drawPolysArray(ctxTemp, grayPolysGaps);
-                ctxTemp.globalCompositeOperation = 'source-in'; ctxTemp.fillStyle = grayColor; ctxTemp.fillRect(0, 0, cvsW, cvsH);
-            } else {
-                ctxTemp.globalCompositeOperation = 'source-over'; ctxTemp.fillStyle = '#000000'; drawPolysArray(ctxTemp, blackPolys);
-                ctxTemp.globalCompositeOperation = 'source-in'; ctxTemp.fillStyle = grayColor; drawPolysArray(ctxTemp, grayPolysNegative);
+                // Exact (Black \ Gray_Orig) matching Clipper XOR: subtract grayOrigPath directly from blackPath
+                ctxTemp.globalCompositeOperation = 'source-over';
+                ctxTemp.fillStyle = '#000000';
+                ctxTemp.fill(blackPath);
+                ctxTemp.globalCompositeOperation = 'destination-out';
+                ctxTemp.fill(grayOrigPath);
+                ctxTemp.globalCompositeOperation = 'source-in';
+                ctxTemp.fillStyle = grayColor;
+                ctxTemp.fillRect(0, 0, cvsW, cvsH);
+            } else if (grayNegPath) {
+                // Exact (Gray_Neg ∩ Black)
+                ctxTemp.globalCompositeOperation = 'source-over';
+                ctxTemp.fillStyle = '#000000';
+                ctxTemp.fill(blackPath);
+                ctxTemp.globalCompositeOperation = 'source-in';
+                ctxTemp.fillStyle = grayColor;
+                ctxTemp.fill(grayNegPath);
             }
             ctxOut.globalCompositeOperation = 'source-over';
             ctxOut.drawImage(tempCanvas, 0, 0);
@@ -526,7 +597,9 @@ function render() {
             grayNegPolys: grayPolysNegative,
             grayRenderMode,
             isBlackEnabled,
-            isGrayEnabled
+            isGrayEnabled,
+            showOnWhite,
+            showOnBlack
         };
     } else {
         const isColorEnabled = document.getElementById('enableBlack').checked;
@@ -649,8 +722,6 @@ document.getElementById('downloadSvgBtn')?.addEventListener('click', async (e) =
         btn.innerHTML = origHtml;
     }
 });
-
-initApp();
 
 // ============================================================================
 // 20 GRAY PATTERNS (10 COMBOS × A,B) -> 16 RUNES (8 CHECKERED + 8 CONTINUOUS)
@@ -835,17 +906,6 @@ function computeSimilarity(refArr, candArr, maskArr) {
     return (0.65 * pearson + 0.35 * tonalMatch) * 100;
 }
 
-function polysArrayToPath2D(polys) {
-    const path = new Path2D();
-    for (let i = 0; i < polys.length; i++) {
-        const p = polys[i];
-        path.moveTo(p[0].x, p[0].y);
-        for (let j = 1; j < p.length; j++) path.lineTo(p[j].x, p[j].y);
-        path.closePath();
-    }
-    return path;
-}
-
 // Shared scaled composite renderer for both 33px sensor evaluation and crisp gallery thumbnails
 function renderScaledComposite(ctxTarget, ctxTargetTemp, tempCvs, bPath, gPath, styleMode, targetW, targetH, scale, cvsW, cvsH, isCropped, showOnWhite, showOnBlack) {
     ctxTarget.globalCompositeOperation = 'source-over';
@@ -870,11 +930,12 @@ function renderScaledComposite(ctxTarget, ctxTargetTemp, tempCvs, bPath, gPath, 
         if (isCropped && cachedHexClipPath) ctxTargetTemp.clip(cachedHexClipPath);
 
         if (styleMode === 'checkered') {
+            // Exact (Black \ Gray_Orig) matching Clipper XOR
             ctxTargetTemp.globalCompositeOperation = 'source-over';
             ctxTargetTemp.fillStyle = '#000000';
             ctxTargetTemp.fill(bPath);
             ctxTargetTemp.globalCompositeOperation = 'destination-out';
-            ctxTargetTemp.fill(gPath.gaps);
+            ctxTargetTemp.fill(gPath.orig);
             ctxTargetTemp.globalCompositeOperation = 'source-in';
             ctxTargetTemp.fillStyle = '#7f7f7f';
             ctxTargetTemp.fillRect(0, 0, cvsW, cvsH);
@@ -965,6 +1026,7 @@ galleryEl.id = 'rankGalleryContainer';
 viewportEl.appendChild(galleryEl);
 
 let selected16List = [];
+let cachedRuneSignature = '';
 let lastRefThumbs = { blurredUrl: '', crispUrl: '', w: 33, h: 33 };
 let galleryViewState = { showBlurred: false };
 
@@ -973,6 +1035,38 @@ let cachedGrayPolys = new Map();
 let cachedBlackPaths = new Map();
 let cachedGrayPaths = new Map();
 let cachedHexClipPath = null;
+
+function getRuneCacheSignature() {
+    return [
+        loadedImageId,
+        document.getElementById('colsInput')?.value,
+        document.getElementById('rowsInput')?.value,
+        document.getElementById('blackDetailInput')?.value,
+        document.getElementById('val-blackSmooth')?.value,
+        document.getElementById('blackMinThickInput')?.value,
+        document.getElementById('blackMaxThickInput')?.value,
+        document.getElementById('grayDetailInput')?.value,
+        document.getElementById('val-graySmooth')?.value,
+        document.getElementById('grayMinThickInput')?.value,
+        document.getElementById('grayMaxThickInput')?.value,
+        document.getElementById('val-rankBlur')?.value,
+        document.getElementById('grayOnWhite')?.checked ? '1' : '0',
+        document.getElementById('grayOnBlack')?.checked ? '1' : '0',
+        document.getElementById('cropToHex')?.checked ? '1' : '0'
+    ].join('|');
+}
+
+function invalidateRuneCache() {
+    selected16List = [];
+    cachedRuneSignature = '';
+    cachedBlackPolys.clear();
+    cachedGrayPolys.clear();
+    cachedBlackPaths.clear();
+    cachedGrayPaths.clear();
+    cachedHexClipPath = null;
+    const toggleBtn = document.getElementById('toggleGalleryViewBtn');
+    if (toggleBtn) toggleBtn.style.display = 'none';
+}
 
 const rankBlurInput = document.getElementById('rankBlurInput');
 const valRankBlur = document.getElementById('val-rankBlur');
@@ -1215,14 +1309,12 @@ async function compute16RunePatterns() {
         if (btn) btn.textContent = `⏳ Gray bases: ${i + 1} / 20...`;
         await new Promise(r => setTimeout(r, 0));
 
-        const gOrig = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: false, isNegative: false }, imgData);
-        const gGaps = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: true, isNegative: false }, imgData);
-        const gNeg  = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isInverse: false, isNegative: true }, imgData);
+        const gOrig = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isNegative: false }, imgData);
+        const gNeg  = buildMonoPolygonsData('gray', gs.mLetter, gs.combo, { isNegative: true }, imgData);
 
-        cachedGrayPolys.set(gs.key, { orig: gOrig, gaps: gGaps, neg: gNeg });
+        cachedGrayPolys.set(gs.key, { orig: gOrig, neg: gNeg });
         cachedGrayPaths.set(gs.key, {
             orig: polysArrayToPath2D(gOrig),
-            gaps: polysArrayToPath2D(gGaps),
             neg:  polysArrayToPath2D(gNeg)
         });
     }
@@ -1233,7 +1325,7 @@ async function compute16RunePatterns() {
             if (btn) btn.textContent = `⏳ Black variants: ${i + 1} / 108...`;
             await new Promise(r => setTimeout(r, 0));
         }
-        const bPolys = buildMonoPolygonsData('black', bs.mLetter, bs.combo, { isInverse: false, isNegative: false }, imgData);
+        const bPolys = buildMonoPolygonsData('black', bs.mLetter, bs.combo, { isNegative: false }, imgData);
         cachedBlackPolys.set(bs.key, bPolys);
         cachedBlackPaths.set(bs.key, polysArrayToPath2D(bPolys));
     }
@@ -1351,6 +1443,7 @@ async function compute16RunePatterns() {
     });
 
     selected16List = spread16;
+    cachedRuneSignature = getRuneCacheSignature();
 
     if (btn) {
         btn.disabled = false;
@@ -1369,8 +1462,9 @@ async function export16SvgZip() {
     const expBtn = document.getElementById('exportTopSvgZipBtn');
     const toolbarBtn = document.getElementById('btnToolbarExportZip');
 
-    if (selected16List.length === 0) {
+    if (selected16List.length === 0 || cachedRuneSignature !== getRuneCacheSignature()) {
         await compute16RunePatterns();
+        if (galleryEl.style.display === 'block') renderGalleryDOM();
     }
 
     if (expBtn) expBtn.disabled = true;
@@ -1382,6 +1476,8 @@ async function export16SvgZip() {
         const cvsW = mainCanvas.width, cvsH = mainCanvas.height;
         const hexW = cvsW / (cols * 2 + 1), hexH = cvsH / (rows * 3 + 1);
         const isCropped = document.getElementById('cropToHex')?.checked;
+        const showOnWhite = document.getElementById('grayOnWhite').checked;
+        const showOnBlack = document.getElementById('grayOnBlack').checked;
         const hexPolys = buildHexPolys(cols, rows, hexW, hexH);
         const stencilOpts = getStencilSettings();
 
@@ -1415,6 +1511,8 @@ async function export16SvgZip() {
                 grayRenderMode: item.grayRenderMode,
                 isBlackEnabled: true,
                 isGrayEnabled: true,
+                showOnWhite,
+                showOnBlack,
                 ...stencilOpts,
                 appVersion: APP_VERSION
             });
@@ -1445,3 +1543,5 @@ async function export16SvgZip() {
 }
 
 document.getElementById('exportTopSvgZipBtn')?.addEventListener('click', export16SvgZip);
+
+initApp();

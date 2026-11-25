@@ -1,11 +1,16 @@
 // ============================================================================
-// STENCIL BOOLEAN, CLEAN/WELD & SIGNATURE ENGINE (234.0 mm HEX WINDOW)
+// STENCIL BOOLEAN, CLEAN/WELD & SIGNATURE ENGINE (234.0 × 292.5 mm WINDOW)
 // ============================================================================
 
-const PHYSICAL_HEX_WIDTH_MM = 234.0;
-const UNITS_PER_MM = 200; // 1 unit = 0.005 mm (fast 32-bit integer Clipper range)
+const PHYSICAL_SHORT_MM = 234.0;
+const PHYSICAL_LONG_MM = 292.5;
+const MM_TO_PT = 72.0 / 25.4; // Exact Adobe Illustrator SVG point scale (1 mm = 2.83464567 pt)
+
+const UNITS_PER_MM = 200; // 1 unit = 0.005 mm (5 microns, safe 32-bit integer Clipper range)
+const SEAM_SEAL_MM = 0.025; // 25-micron pre-seal to fuse rhombus rounding slits before erosion
 const ARC_TOLERANCE_MM = 0.025;
 const MIN_FRAGMENT_AREA_MM2 = 0.20;
+const MAX_SLIVER_RADIUS_MM = 0.35;
 
 const CLIPPER_CDN_URLS = [
     'https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/clipper.js',
@@ -25,6 +30,8 @@ const SIGNATURE_AI_REL_MM = [
         [6.9850, 8.8794], [6.9850, -8.8653], [10.0894, -8.8653], [10.0894, 8.8794]
     ]
 ];
+const SIG_HALF_SPAN_X_MM = 10.0894;
+const SIG_HALF_SPAN_Y_MM = 8.8794;
 
 let clipperLoadPromise = null;
 
@@ -58,11 +65,20 @@ export async function ensureClipperLoaded() {
     return clipperLoadPromise;
 }
 
-function getScaleContext(cvsW) {
-    const pxPerMm = cvsW / PHYSICAL_HEX_WIDTH_MM;
-    const toClipper = UNITS_PER_MM / pxPerMm;
-    const toCanvas = 1 / toClipper;
-    return { pxPerMm, toClipper, toCanvas };
+// Map source image pixels (0..cvsW, 0..cvsH) directly into true physical 234.0 × 292.5 mm space
+// and output in native Illustrator points (663.31 × 829.13 pt) so offsets & "AI" stay 100% unstretched
+function getScaleContext(cvsW, cvsH) {
+    const isLandscape = cvsW > cvsH;
+    const physWmm = isLandscape ? PHYSICAL_LONG_MM : PHYSICAL_SHORT_MM;
+    const physHmm = isLandscape ? PHYSICAL_SHORT_MM : PHYSICAL_LONG_MM;
+
+    const toClipperX = (physWmm * UNITS_PER_MM) / cvsW;
+    const toClipperY = (physHmm * UNITS_PER_MM) / cvsH;
+    const toSvgPt = MM_TO_PT / UNITS_PER_MM;
+    const svgW = physWmm * MM_TO_PT;
+    const svgH = physHmm * MM_TO_PT;
+
+    return { physWmm, physHmm, toClipperX, toClipperY, toSvgPt, svgW, svgH };
 }
 
 function signedAreaUnits(path) {
@@ -71,6 +87,14 @@ function signedAreaUnits(path) {
         area += (path[j].X + path[i].X) * (path[j].Y - path[i].Y);
     }
     return area * 0.5;
+}
+
+function perimeterUnits(path) {
+    let perim = 0;
+    for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+        perim += Math.hypot(path[i].X - path[j].X, path[i].Y - path[j].Y);
+    }
+    return perim;
 }
 
 function pruneMicroVertices(paths, minDistUnits) {
@@ -107,7 +131,50 @@ function filterSmallContours(paths, minAreaMm2 = MIN_FRAGMENT_AREA_MM2) {
     return paths.filter(p => p.length >= 3 && Math.abs(signedAreaUnits(p)) >= minUnits2);
 }
 
-function rawPolysToClipperUnion(ClipperLib, polys, toClipper) {
+// Remove grazing border slivers ("eyelashes") after sharp boundary crop while keeping
+// 100% razor-sharp 60°/120°/90° corners on all surviving contours
+function filterPostCropSlivers(ClipperLib, paths, cleanMm, weldMm, minAreaMm2 = MIN_FRAGMENT_AREA_MM2) {
+    if (!paths || paths.length === 0) return [];
+    const minUnits2 = Math.max(0.01, minAreaMm2) * UNITS_PER_MM * UNITS_PER_MM;
+    const sliverRadiusMm = Math.min(MAX_SLIVER_RADIUS_MM, Math.max(weldMm, cleanMm * 0.25));
+    const sliverRadiusUnits = sliverRadiusMm * UNITS_PER_MM;
+
+    const kept = [];
+    for (let i = 0; i < paths.length; i++) {
+        const p = paths[i];
+        if (!p || p.length < 3) continue;
+        const absArea = Math.abs(signedAreaUnits(p));
+        if (absArea < minUnits2) continue;
+
+        if (sliverRadiusUnits > 1) {
+            const perim = perimeterUnits(p);
+            // Quick ribbon half-width bound (Area / Perimeter <= r_max): only run exact offset test on thin candidates
+            if (perim > 0 && (absArea / perim) < sliverRadiusUnits) {
+                const testRing = p.slice();
+                if (!ClipperLib.Clipper.Orientation(testRing)) testRing.reverse();
+                const eroded = offsetRound(ClipperLib, [testRing], -sliverRadiusMm);
+                if (!eroded || eroded.length === 0) continue;
+            }
+        }
+        kept.push(p);
+    }
+    return kept;
+}
+
+function buildRectClipperPaths(ClipperLib, physWmm, physHmm) {
+    const wU = Math.round(physWmm * UNITS_PER_MM);
+    const hU = Math.round(physHmm * UNITS_PER_MM);
+    const rect = [
+        { X: 0, Y: 0 },
+        { X: wU, Y: 0 },
+        { X: wU, Y: hU },
+        { X: 0, Y: hU }
+    ];
+    if (!ClipperLib.Clipper.Orientation(rect)) rect.reverse();
+    return [rect];
+}
+
+function rawPolysToClipperUnion(ClipperLib, polys, toClipperX, toClipperY) {
     if (!polys || polys.length === 0) return [];
     const subj = [];
     for (let i = 0; i < polys.length; i++) {
@@ -116,8 +183,8 @@ function rawPolysToClipperUnion(ClipperLib, polys, toClipper) {
         const path = [];
         for (let j = 0; j < src.length; j++) {
             path.push({
-                X: Math.round(src[j].x * toClipper),
-                Y: Math.round(src[j].y * toClipper)
+                X: Math.round(src[j].x * toClipperX),
+                Y: Math.round(src[j].y * toClipperY)
             });
         }
         if (Math.abs(signedAreaUnits(path)) < 1) continue;
@@ -169,12 +236,17 @@ function offsetRound(ClipperLib, paths, deltaMm) {
     return out;
 }
 
-// Clean (-cleanMm -> +cleanMm) followed by Weld (+weldMm -> -weldMm) with Round Joins
+// Seal 25-micron rounding slits on seams FIRST, then Clean (-cleanMm -> +cleanMm), then Weld (+weldMm -> -weldMm)
 function cleanAndWeldPaths(ClipperLib, paths, cleanMm, weldMm) {
     let res = paths;
     if (!res || res.length === 0) return [];
 
-    if (cleanMm > 0) {
+    // Pre-seal microscopic rounding seams between adjacent rhombuses / boolean joints
+    // so -cleanMm erosion never eats inward from hairline seams
+    res = offsetRound(ClipperLib, res, +SEAM_SEAL_MM);
+    res = offsetRound(ClipperLib, res, -SEAM_SEAL_MM);
+
+    if (cleanMm > 0 && res.length > 0) {
         res = offsetRound(ClipperLib, res, -cleanMm);
         res = offsetRound(ClipperLib, res, +cleanMm);
     }
@@ -189,21 +261,27 @@ function cleanAndWeldPaths(ClipperLib, paths, cleanMm, weldMm) {
     return res;
 }
 
-function buildSignatureClipperPaths(ClipperLib, cols, rows, cvsW, cvsH, toClipper) {
-    const hexW = cvsW / (cols * 2 + 1);
-    const hexH = cvsH / (rows * 3 + 1);
+// Build "AI" signature centered in bottom-right hexagon (1.0x original size on 3×6 and 4×8;
+// smoothly scales down only on dense grids so it never overflows small hexagons)
+function buildSignatureClipperPaths(ClipperLib, cols, rows, physWmm, physHmm) {
+    const hexWmm = physWmm / (cols * 2 + 1);
+    const hexHmm = physHmm / (rows * 3 + 1);
     const lastR = rows - 1;
     const lastC = cols - 1;
     const gx = (Math.abs(lastR) % 2 === 0) ? (lastC * 2 + 1) : (lastC * 2 + 2);
     const gy = lastR * 3 + 2;
 
-    const cxUnits = gx * hexW * toClipper;
-    const cyUnits = gy * hexH * toClipper;
+    const cxUnits = gx * hexWmm * UNITS_PER_MM;
+    const cyUnits = gy * hexHmm * UNITS_PER_MM;
+
+    const limX = (0.75 * hexWmm) / SIG_HALF_SPAN_X_MM;
+    const limSlant = 1.50 / (SIG_HALF_SPAN_X_MM / hexWmm + SIG_HALF_SPAN_Y_MM / hexHmm);
+    const sigScale = Math.min(1.0, limX, limSlant);
 
     const rawContours = SIGNATURE_AI_REL_MM.map(contour =>
         contour.map(([dxMm, dyMm]) => ({
-            X: Math.round(cxUnits + dxMm * UNITS_PER_MM),
-            Y: Math.round(cyUnits + dyMm * UNITS_PER_MM)
+            X: Math.round(cxUnits + dxMm * sigScale * UNITS_PER_MM),
+            Y: Math.round(cyUnits + dyMm * sigScale * UNITS_PER_MM)
         }))
     );
 
@@ -219,7 +297,7 @@ function buildSignatureClipperPaths(ClipperLib, cols, rows, cvsW, cvsH, toClippe
     return normalized;
 }
 
-function clipperPathsToSvgGroup(groupId, fillHex, paths, toCanvas, indent = '  ', hidden = false) {
+function clipperPathsToSvgGroup(groupId, fillHex, paths, toSvgPt, indent = '  ', hidden = false) {
     const styleAttr = hidden ? ' style="display:none"' : '';
     if (!paths || paths.length === 0) {
         return `${indent}<g id="${groupId}" fill="${fillHex}"${styleAttr}></g>\n`;
@@ -228,9 +306,9 @@ function clipperPathsToSvgGroup(groupId, fillHex, paths, toCanvas, indent = '  '
     for (let i = 0; i < paths.length; i++) {
         const p = paths[i];
         if (p.length < 3) continue;
-        d += `M ${(p[0].X * toCanvas).toFixed(2)},${(p[0].Y * toCanvas).toFixed(2)}`;
+        d += `M ${(p[0].X * toSvgPt).toFixed(2)},${(p[0].Y * toSvgPt).toFixed(2)}`;
         for (let j = 1; j < p.length; j++) {
-            d += ` L ${(p[j].X * toCanvas).toFixed(2)},${(p[j].Y * toCanvas).toFixed(2)}`;
+            d += ` L ${(p[j].X * toSvgPt).toFixed(2)},${(p[j].Y * toSvgPt).toFixed(2)}`;
         }
         d += ' Z ';
     }
@@ -238,9 +316,9 @@ function clipperPathsToSvgGroup(groupId, fillHex, paths, toCanvas, indent = '  '
 }
 
 // Stage-1 Geometry Pipeline:
-// 1. Clean (1.33mm) + Weld (0.333mm)
-// 2. Boolean Algebra (CNT or CHK)
-// 3. Clean (1.33mm) + Weld (0.333mm) + Hexagon Crop
+// 1. Seam-Seal (0.025mm) + Clean (1.33mm) + Weld (0.333mm) on full-bleed geometry in 234.0 × 292.5 mm space
+// 2. Boolean Algebra (CNT or CHK, respecting showOnWhite / showOnBlack toggles)
+// 3. Seam-Seal + Clean (1.33mm) + Weld (0.333mm) + crisp Boundary Crop + Grazing Sliver Filter
 // 4. Independent XOR ("Exclude") with Signature "AI" on Gray and Black
 export async function buildProcessedMonoSvg({
     rootSvgId,
@@ -257,74 +335,107 @@ export async function buildProcessedMonoSvg({
     grayRenderMode = 'continuous',
     isBlackEnabled = true,
     isGrayEnabled = true,
+    showOnWhite = true,
+    showOnBlack = true,
     cleanMm = 1.33,
     weldMm = 0.333,
     enableSignature = true,
     appVersion = 'v2.0'
 }) {
     const ClipperLib = await ensureClipperLoaded();
-    const { toClipper, toCanvas } = getScaleContext(cvsW);
+    const { physWmm, physHmm, toClipperX, toClipperY, toSvgPt, svgW, svgH } = getScaleContext(cvsW, cvsH);
     const CT = ClipperLib.ClipType;
 
-    const hexClipPaths = isCropped ? rawPolysToClipperUnion(ClipperLib, hexPolys, toClipper) : null;
+    const hexClipPaths = isCropped
+        ? rawPolysToClipperUnion(ClipperLib, hexPolys, toClipperX, toClipperY)
+        : null;
+    const cropBoundaryPaths = isCropped
+        ? hexClipPaths
+        : buildRectClipperPaths(ClipperLib, physWmm, physHmm);
 
-    // 1. Pre-Boolean Union -> Clean -> Weld
+    // 1. Pre-Boolean Union -> Seam-Seal -> Clean -> Weld (with full outer bleed so border edges never pull back)
     let blackPaths = isBlackEnabled
-        ? cleanAndWeldPaths(ClipperLib, rawPolysToClipperUnion(ClipperLib, blackPolys, toClipper), cleanMm, weldMm)
+        ? cleanAndWeldPaths(ClipperLib, rawPolysToClipperUnion(ClipperLib, blackPolys, toClipperX, toClipperY), cleanMm, weldMm)
         : [];
 
     let bgPaths = (isGrayEnabled && bgPolys)
-        ? cleanAndWeldPaths(ClipperLib, rawPolysToClipperUnion(ClipperLib, bgPolys, toClipper), cleanMm, weldMm)
+        ? cleanAndWeldPaths(ClipperLib, rawPolysToClipperUnion(ClipperLib, bgPolys, toClipperX, toClipperY), cleanMm, weldMm)
         : [];
 
     let grayFinalPaths = [];
-    if (isGrayEnabled) {
+    if (isGrayEnabled && (showOnWhite || showOnBlack)) {
         const grayOrigPaths = cleanAndWeldPaths(
             ClipperLib,
-            rawPolysToClipperUnion(ClipperLib, grayOrigPolys, toClipper),
+            rawPolysToClipperUnion(ClipperLib, grayOrigPolys, toClipperX, toClipperY),
             cleanMm,
             weldMm
         );
 
-        // 2. Boolean Algebra
+        // 2. Boolean Algebra (respecting Show on White / Show on Black checkboxes)
         if (!isBlackEnabled) {
-            grayFinalPaths = grayOrigPaths;
+            grayFinalPaths = showOnWhite ? grayOrigPaths : [];
         } else if (grayRenderMode === 'checkered') {
-            // CHK: (Gray \ Black) U (Black \ Gray) === Gray XOR Black
-            grayFinalPaths = execClip(ClipperLib, CT.ctXor, grayOrigPaths, blackPaths);
+            if (showOnWhite && showOnBlack) {
+                // Full CHK: (Gray \ Black) U (Black \ Gray) === Gray XOR Black
+                grayFinalPaths = execClip(ClipperLib, CT.ctXor, grayOrigPaths, blackPaths);
+            } else if (showOnWhite) {
+                grayFinalPaths = execClip(ClipperLib, CT.ctDifference, grayOrigPaths, blackPaths);
+            } else if (showOnBlack) {
+                grayFinalPaths = execClip(ClipperLib, CT.ctDifference, blackPaths, grayOrigPaths);
+            }
         } else {
             // CNT: (Gray \ Black) U (Gray_Negative ∩ Black)
-            const grayNegPaths = cleanAndWeldPaths(
-                ClipperLib,
-                rawPolysToClipperUnion(ClipperLib, grayNegPolys, toClipper),
-                cleanMm,
-                weldMm
-            );
-            const grayOnWhite = execClip(ClipperLib, CT.ctDifference, grayOrigPaths, blackPaths);
-            const grayOnBlack = execClip(ClipperLib, CT.ctIntersection, grayNegPaths, blackPaths);
-            grayFinalPaths = execClip(ClipperLib, CT.ctUnion, grayOnWhite, grayOnBlack);
+            const grayOnWhitePaths = showOnWhite
+                ? execClip(ClipperLib, CT.ctDifference, grayOrigPaths, blackPaths)
+                : [];
+            let grayOnBlackPaths = [];
+            if (showOnBlack) {
+                const grayNegPaths = cleanAndWeldPaths(
+                    ClipperLib,
+                    rawPolysToClipperUnion(ClipperLib, grayNegPolys, toClipperX, toClipperY),
+                    cleanMm,
+                    weldMm
+                );
+                grayOnBlackPaths = execClip(ClipperLib, CT.ctIntersection, grayNegPaths, blackPaths);
+            }
+            grayFinalPaths = execClip(ClipperLib, CT.ctUnion, grayOnWhitePaths, grayOnBlackPaths);
         }
 
-        // 3. Post-Boolean Clean -> Weld
+        // 3. Post-Boolean Seam-Seal -> Clean -> Weld
         grayFinalPaths = cleanAndWeldPaths(ClipperLib, grayFinalPaths, cleanMm, weldMm);
     }
 
-    // Crisp crop to Hexagon cluster so outer 60°/120° hex corners stay sharp
-    if (isCropped && hexClipPaths && hexClipPaths.length > 0) {
+    // Crisp crop to Hexagon cluster (or 234×292.5mm rectangle if uncropped) + Grazing Sliver Filter
+    if (cropBoundaryPaths && cropBoundaryPaths.length > 0) {
         if (blackPaths.length > 0) {
-            blackPaths = filterSmallContours(execClip(ClipperLib, CT.ctIntersection, blackPaths, hexClipPaths));
+            blackPaths = filterPostCropSlivers(
+                ClipperLib,
+                execClip(ClipperLib, CT.ctIntersection, blackPaths, cropBoundaryPaths),
+                cleanMm,
+                weldMm
+            );
         }
         if (grayFinalPaths.length > 0) {
-            grayFinalPaths = filterSmallContours(execClip(ClipperLib, CT.ctIntersection, grayFinalPaths, hexClipPaths));
+            grayFinalPaths = filterPostCropSlivers(
+                ClipperLib,
+                execClip(ClipperLib, CT.ctIntersection, grayFinalPaths, cropBoundaryPaths),
+                cleanMm,
+                weldMm
+            );
         }
         if (bgPaths.length > 0) {
-            bgPaths = filterSmallContours(execClip(ClipperLib, CT.ctIntersection, bgPaths, hexClipPaths));
+            bgPaths = filterPostCropSlivers(
+                ClipperLib,
+                execClip(ClipperLib, CT.ctIntersection, bgPaths, cropBoundaryPaths),
+                cleanMm,
+                weldMm
+            );
         }
     }
 
     // 4. Independent XOR ("Exclude") with Signature "AI" on Gray and Black
     if (enableSignature) {
-        const sigPaths = buildSignatureClipperPaths(ClipperLib, cols, rows, cvsW, cvsH, toClipper);
+        const sigPaths = buildSignatureClipperPaths(ClipperLib, cols, rows, physWmm, physHmm);
         if (isBlackEnabled) {
             blackPaths = execClip(ClipperLib, CT.ctXor, blackPaths, sigPaths);
         }
@@ -333,22 +444,22 @@ export async function buildProcessedMonoSvg({
         }
     }
 
-    // Assemble SVG (Illustrator top-to-bottom: Layer_Gray -> Layer_Black -> Layer_Hexagons -> Background_Layer)
-    const metaComment = `<!-- Iso-Xylography ${appVersion} | Clean: ${cleanMm}mm | Weld: ${weldMm}mm | Mode: ${grayRenderMode === 'checkered' ? 'CHK' : 'CNT'} -->\n`;
+    // Assemble SVG in exact Illustrator points (663.31 × 829.13 pt === 234.0 × 292.5 mm)
+    const metaComment = `<!-- Iso-Xylography ${appVersion} | Window: ${physWmm}x${physHmm}mm | Clean: ${cleanMm}mm | Weld: ${weldMm}mm | Mode: ${grayRenderMode === 'checkered' ? 'CHK' : 'CNT'} -->\n`;
     let svgStr = metaComment;
-    svgStr += `<svg version="1.1" id="${rootSvgId}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cvsW} ${cvsH}">\n`;
+    svgStr += `<svg version="1.1" id="${rootSvgId}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW.toFixed(2)} ${svgH.toFixed(2)}">\n`;
 
     if (isGrayEnabled && bgPolys) {
-        svgStr += clipperPathsToSvgGroup('Background_Layer', '#000000', bgPaths, toCanvas, '  ');
+        svgStr += clipperPathsToSvgGroup('Background_Layer', '#000000', bgPaths, toSvgPt, '  ');
     }
     if (isCropped && hexClipPaths) {
-        svgStr += clipperPathsToSvgGroup('Layer_Hexagons', '#FFFFFF', hexClipPaths, toCanvas, '  ');
+        svgStr += clipperPathsToSvgGroup('Layer_Hexagons', '#FFFFFF', hexClipPaths, toSvgPt, '  ');
     }
     if (isBlackEnabled) {
-        svgStr += clipperPathsToSvgGroup('Layer_Black', '#000000', blackPaths, toCanvas, '  ');
+        svgStr += clipperPathsToSvgGroup('Layer_Black', '#000000', blackPaths, toSvgPt, '  ');
     }
     if (isGrayEnabled) {
-        svgStr += clipperPathsToSvgGroup('Layer_Gray', '#7f7f7f', grayFinalPaths, toCanvas, '  ');
+        svgStr += clipperPathsToSvgGroup('Layer_Gray', '#7f7f7f', grayFinalPaths, toSvgPt, '  ');
     }
 
     svgStr += `</svg>`;
