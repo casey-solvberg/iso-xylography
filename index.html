@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iso-Xylography Studio</title>
+    <title>Iso-Xylography Studio v2.0</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="./style.css">
 </head>
 <body>
     <div class="sidebar">
-        <h2>Iso-Xylography</h2>
+        <h2>Iso-Xylography <span style="font-size: 0.78rem; color: #4CAF50; font-weight: normal;">v2.0</span></h2>
 
         <div class="mode-switcher">
             <button id="btnMonoMode" class="mode-btn active">Monochrome</button>
@@ -160,6 +160,14 @@
             
             <label style="margin-top:12px;">Debug Opacity: <span class="val-wrapper"><input type="number" class="value-badge" id="val-debugOpacity" value="50" min="0" max="100">%</span></label>
             <input type="range" id="debugOpacityInput" min="0" max="100" value="50">
+        </div>
+
+        <div class="control-group">
+            <h3 class="layer-title" style="color: #FF9800; margin-bottom: 10px; font-size: 0.9rem;">SVG Geometry (24×30)</h3>
+
+            <label style="margin-bottom: 8px;">Clean Radius: <span class="val-wrapper"><input type="number" class="value-badge" id="val-cleanMm" value="1.33" min="0" max="5" step="0.01"> mm</span></label>
+            <label style="margin-bottom: 10px;">Weld Radius: <span class="val-wrapper"><input type="number" class="value-badge" id="val-weldMm" value="0.333" min="0" max="5" step="0.001"> mm</span></label>
+            <label class="checkbox-label"><input type="checkbox" id="enableSignature" checked> Signature "AI" (XOR)</label>
         </div>
         
         <button id="downloadPngBtn" class="action-btn" style="margin-bottom: 10px;">
